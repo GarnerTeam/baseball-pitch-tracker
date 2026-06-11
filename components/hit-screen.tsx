@@ -114,12 +114,22 @@ export function HitScreen({ onRecord, onCancel }: { onRecord: (h: HitData) => vo
   const markerColor = (r: HitResult | null) =>
     r ? (HIT_RESULTS.find(x => x.value === r)?.color ?? '#94a3b8') : '#94a3b8';
 
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+  const handleFieldTap = (clientX: number, clientY: number, target: SVGSVGElement) => {
+    const rect = target.getBoundingClientRect();
     setCoords({
-      x: Math.round(((e.clientX - rect.left) / rect.width) * 1000) / 10,
-      y: Math.round(((e.clientY - rect.top) / rect.height) * 1000) / 10,
+      x: Math.round(((clientX - rect.left) / rect.width) * 1000) / 10,
+      y: Math.round(((clientY - rect.top) / rect.height) * 1000) / 10,
     });
+  };
+
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    handleFieldTap(e.clientX, e.clientY, e.currentTarget);
+  };
+
+  const handleTouch = (e: React.TouchEvent<SVGSVGElement>) => {
+    e.preventDefault(); // prevent ghost-click on mobile
+    const touch = e.changedTouches[0];
+    handleFieldTap(touch.clientX, touch.clientY, e.currentTarget);
   };
 
   return (
@@ -141,6 +151,7 @@ export function HitScreen({ onRecord, onCancel }: { onRecord: (h: HitData) => vo
             className="w-full rounded-xl border border-slate-700 cursor-crosshair"
             style={{ maxHeight: 350, background: '#0a140a' }}
             onClick={handleClick}
+            onTouchEnd={handleTouch}
           >
             {/* ── OUTFIELD GRASS ── */}
             <path d={`M ${HX} ${HY} L ${LFPX} ${LFPY} A ${R_FENCE} ${R_FENCE} 0 0 1 ${RFPX} ${RFPY} Z`} fill="#173d10" />
