@@ -553,17 +553,21 @@ export function useGame() {
   // would cause the same pitch to be written to Sheets multiple times.
   const isSyncing = useRef(false);
   useEffect(() => {
+    console.log('[sync] queue:', state.syncQueue.length, 'url:', state.sheetsWebhookUrl ? 'SET' : 'EMPTY', 'syncing:', isSyncing.current);
     if (state.syncQueue.length === 0 || !state.sheetsWebhookUrl || isSyncing.current) return;
     isSyncing.current = true;
     // Capture the queue at this moment so the .then() closure uses the right slice
     const snapshot = state.syncQueue;
+    console.log('[sync] firing for', snapshot.length, 'pitches');
     syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced }) => {
       isSyncing.current = false;
+      console.log('[sync] result: synced=', synced);
       if (synced > 0) {
         const ids = snapshot.slice(0, synced).map((p) => p.id);
         dispatch({ type: 'MARK_SYNCED', pitchIds: ids });
       }
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('[sync] error:', err);
       isSyncing.current = false; // release lock on network error so next pitch can retry
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
