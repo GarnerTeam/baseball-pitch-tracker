@@ -1,191 +1,144 @@
 /**
  * On the Bump — Google Apps Script Webhook
- * ─────────────────────────────────────────
  * Deploy as a Web App:
  *   Extensions → Apps Script → Deploy → New deployment
- *   Type: Web App
- *   Execute as: Me
- *   Who has access: Anyone
- *
- * Copy the Web App URL into the app's Data Backup field on the startup screen.
+ *   Type: Web app | Execute as: Me | Who has access: Anyone
  */
 
-// ── Column definitions (must match flattenPitch output in lib/sheets.ts) ──────
-
 const COLUMNS = [
-  'gameId',        // A
-  'timestamp',     // B
-  'homeTeam',      // C  — My Team
-  'visitingTeam',  // D  — Opposing Team
-  'pitcherNumber', // E
-  'pitcherName',   // F
-  'batterNumber',  // G
-  'batterName',    // H
-  'batterHand',    // I
-  'lineupPosition',// J
-  'atBatNumber',   // K
-  'pitchNumber',   // L
-  'ballsBefore',   // M
-  'strikesBefore', // N
-  'pitchType',     // O
-  'pitchZone',     // P
-  'pitchLocation', // Q
-  'action',        // R
-  'outcome',       // S
-  'ballsAfter',    // T
-  'strikesAfter',  // U
-  'hitType',       // V
-  'hitTypeName',   // W
-  'hitResult',     // X
-  'hitResultName', // Y
-  'hitZone',       // Z
-  'hitX',          // AA
-  'hitY',          // AB
-  'runner1B',      // AC
-  'runner2B',      // AD
-  'runner3B',      // AE
-  'outsCount',     // AF
-  'baseState',     // AG
+  'gameId','timestamp','homeTeam','visitingTeam',
+  'pitcherNumber','pitcherName','batterNumber','batterName','batterHand',
+  'lineupPosition','atBatNumber','pitchNumber',
+  'ballsBefore','strikesBefore','pitchType','pitchZone','pitchLocation',
+  'action','outcome','ballsAfter','strikesAfter',
+  'hitType','hitTypeName','hitResult','hitResultName','hitZone','hitX','hitY',
+  'runner1B','runner2B','runner3B','outsCount','baseState',
 ];
 
 const HEADERS = [
-  'Game ID',        // A
-  'Timestamp',      // B
-  'My Team',        // C
-  'Opposing Team',  // D
-  'Pitcher #',      // E
-  'Pitcher Name',   // F
-  'Batter #',       // G
-  'Batter Name',    // H
-  'Handedness',     // I
-  'Lineup Pos',     // J
-  'At-Bat #',       // K
-  'Pitch # in AB',  // L
-  'Balls Before',   // M
-  'Strikes Before', // N
-  'Pitch Type',     // O
-  'Zone',           // P
-  'Pitch Location', // Q
-  'Action',         // R
-  'Result',         // S
-  'Balls After',    // T
-  'Strikes After',  // U
-  'Hit Type',       // V
-  'Hit Type Name',  // W
-  'Hit Result',     // X
-  'Hit Result Name',// Y
-  'Hit Zone',       // Z
-  'Hit X',          // AA
-  'Hit Y',          // AB
-  'Runner 1B',      // AC
-  'Runner 2B',      // AD
-  'Runner 3B',      // AE
-  'Outs',           // AF
-  'Base State',     // AG
+  'Game ID','Timestamp','My Team','Opposing Team',
+  'Pitcher #','Pitcher Name','Batter #','Batter Name','Handedness',
+  'Lineup Pos','At-Bat #','Pitch # in AB',
+  'Balls Before','Strikes Before','Pitch Type','Zone','Pitch Location',
+  'Action','Result','Balls After','Strikes After',
+  'Hit Type','Hit Type Name','Hit Result','Hit Result Name','Hit Zone','Hit X','Hit Y',
+  'Runner 1B','Runner 2B','Runner 3B','Outs','Base State',
 ];
 
-// ── Header group colors ────────────────────────────────────────────────────────
-// Used to color-band the header row by category for easy reading
 const HEADER_GROUPS = [
-  { label: 'Game',    cols: [1, 4],   bg: '#1a3a5c', fg: '#ffffff' }, // A–D
-  { label: 'Pitcher', cols: [5, 6],   bg: '#2d5016', fg: '#ffffff' }, // E–F
-  { label: 'Batter',  cols: [7, 11],  bg: '#4a2060', fg: '#ffffff' }, // G–K
-  { label: 'Pitch',   cols: [12, 18], bg: '#5c3d00', fg: '#ffffff' }, // L–R
-  { label: 'Outcome', cols: [19, 28], bg: '#5c1a1a', fg: '#ffffff' }, // S–AB
-  { label: 'Base',    cols: [29, 33], bg: '#1a4a3a', fg: '#ffffff' }, // AC–AG
+  { label:'Game',    cols:[1,4],   bg:'#1a3a5c', fg:'#ffffff' },
+  { label:'Pitcher', cols:[5,6],   bg:'#2d5016', fg:'#ffffff' },
+  { label:'Batter',  cols:[7,11],  bg:'#4a2060', fg:'#ffffff' },
+  { label:'Pitch',   cols:[12,18], bg:'#5c3d00', fg:'#ffffff' },
+  { label:'Outcome', cols:[19,28], bg:'#5c1a1a', fg:'#ffffff' },
+  { label:'Base',    cols:[29,33], bg:'#1a4a3a', fg:'#ffffff' },
 ];
-
-// ── Webhook entry point ────────────────────────────────────────────────────────
 
 function doPost(e) {
   try {
-    const raw = e.postData ? e.postData.contents : '[]';
-    const data = JSON.parse(raw);
-    const rows = Array.isArray(data) ? data : [data];
+    Logger.log('doPost called');
 
-    if (rows.length === 0) {
-      return ok({ count: 0, message: 'No rows received' });
+    // ── Read body ───────────────────────────────────────────────────────────
+    var raw = '';
+    if (e && e.postData && e.postData.contents) {
+      raw = e.postData.contents;
+      Logger.log('postData.contents length: ' + raw.length);
+      Logger.log('postData.type: ' + e.postData.type);
+      Logger.log('first 200 chars: ' + raw.substring(0, 200));
+    } else {
+      Logger.log('No postData — e=' + JSON.stringify(e));
+      return ok({ count: 0, message: 'No postData received' });
     }
 
-    const ss   = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = getOrCreateSheet(ss, 'Pitches');
+    // ── Parse ───────────────────────────────────────────────────────────────
+    var data;
+    try {
+      data = JSON.parse(raw);
+    } catch (parseErr) {
+      Logger.log('JSON.parse failed: ' + parseErr.toString());
+      Logger.log('raw body: ' + raw);
+      return error('JSON parse error: ' + parseErr.toString());
+    }
 
-    // Write headers if the sheet is brand new
+    var rows = Array.isArray(data) ? data : [data];
+    Logger.log('rows received: ' + rows.length);
+
+    if (rows.length === 0) {
+      return ok({ count: 0, message: 'Empty array received' });
+    }
+
+    // ── Write to sheet ──────────────────────────────────────────────────────
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    Logger.log('Spreadsheet: ' + ss.getName());
+
+    var sheet = getOrCreateSheet(ss, 'Pitches');
+    Logger.log('Sheet last row before write: ' + sheet.getLastRow());
+
     if (sheet.getLastRow() === 0) {
+      Logger.log('Initialising headers');
       initSheet(sheet);
     }
 
-    // Append pitch rows
-    const matrix = rows.map(row => COLUMNS.map(key => {
-      const val = row[key];
-      return (val === null || val === undefined) ? '' : val;
-    }));
+    var matrix = rows.map(function(row) {
+      return COLUMNS.map(function(key) {
+        var val = row[key];
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'number' && isNaN(val)) return '';
+        return val;
+      });
+    });
 
+    Logger.log('Writing ' + matrix.length + ' row(s) starting at row ' + (sheet.getLastRow() + 1));
     sheet.getRange(sheet.getLastRow() + 1, 1, matrix.length, COLUMNS.length)
          .setValues(matrix);
+    Logger.log('Write complete');
 
     return ok({ count: rows.length });
+
   } catch (err) {
+    Logger.log('CAUGHT ERROR: ' + err.toString());
+    Logger.log('Stack: ' + err.stack);
     return error(err.toString());
   }
 }
-
-// ── Sheet setup ────────────────────────────────────────────────────────────────
 
 function getOrCreateSheet(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
 function initSheet(sheet) {
-  // Write header row
   sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-
-  // Apply group colors
-  HEADER_GROUPS.forEach(group => {
-    const range = sheet.getRange(1, group.cols[0], 1, group.cols[1] - group.cols[0] + 1);
-    range.setBackground(group.bg)
-         .setFontColor(group.fg)
-         .setFontWeight('bold');
+  HEADER_GROUPS.forEach(function(group) {
+    sheet.getRange(1, group.cols[0], 1, group.cols[1] - group.cols[0] + 1)
+         .setBackground(group.bg).setFontColor(group.fg).setFontWeight('bold');
   });
-
-  // Freeze header row, auto-resize columns
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, HEADERS.length);
-
-  // Set timestamp column to datetime format
   sheet.getRange('B2:B').setNumberFormat('yyyy-mm-dd hh:mm:ss');
-
-  // Set numeric columns
-  ['M','N','T','U','AF'].forEach(col => {
+  ['M','N','T','U','AF'].forEach(function(col) {
     sheet.getRange(col + '2:' + col).setNumberFormat('0');
   });
 }
 
-// ── Manual setup trigger ───────────────────────────────────────────────────────
-// Run this once from the Apps Script editor to initialize the sheet manually
-// (useful for testing before any pitches are sent from the app)
-
 function setupSheet() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = getOrCreateSheet(ss, 'Pitches');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet(ss, 'Pitches');
   if (sheet.getLastRow() === 0) {
     initSheet(sheet);
-    SpreadsheetApp.getUi().alert('✅ Sheet initialized! Headers and formatting are ready.');
+    SpreadsheetApp.getUi().alert('✅ Sheet initialised!');
   } else {
     SpreadsheetApp.getUi().alert('Sheet already has data — no changes made.');
   }
 }
 
-// ── Response helpers ───────────────────────────────────────────────────────────
-
 function ok(payload) {
   return ContentService
-    .createTextOutput(JSON.stringify({ status: 'ok', ...payload }))
+    .createTextOutput(JSON.stringify(Object.assign({ status: 'ok' }, payload)))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 function error(message) {
   return ContentService
-    .createTextOutput(JSON.stringify({ status: 'error', message }))
+    .createTextOutput(JSON.stringify({ status: 'error', message: message }))
     .setMimeType(ContentService.MimeType.JSON);
 }
