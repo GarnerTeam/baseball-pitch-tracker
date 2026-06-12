@@ -8,17 +8,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing webhookUrl or pitches' }, { status: 400 });
     }
 
-    // ── POST to Google Apps Script ───────────────────────────────────────────
-    // Google Apps Script flow:
-    //   1. POST /exec  →  Google runs doPost() and writes data  →  302 redirect
-    //   2. GET the redirect URL  →  returns the JSON response from doPost()
+    // ── Google Apps Script two-step execution flow ───────────────────────────
     //
-    // The 302 redirect URL is a *response delivery* endpoint, NOT a second
-    // execution. It only accepts GET. Re-POSTing to it returns 405.
-    // So we POST once (which executes the script), then GET the redirect URL
-    // to retrieve the response.
+    // Step 1: POST to /exec with redirect:manual
+    //   → Google returns 302 to script.googleusercontent.com/...
+    //
+    // Step 2: POST to that redirect URL
+    //   → THIS is what actually runs doPost() and writes the data
+    //   → Google returns 405 after execution (response delivery uses a different
+    //     channel) — 405 here is expected and means success, not failure
+    //
+    // Confirmed by testing: re-POSTing to redirect = data writes.
+    // Switching to GET = nothing executes.
 
-    // Step 1: POST to execute the script — capture redirect, don't follow it
+    // Step 1 — hit /exec, capture the redirect
     const execRes = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -26,53 +29,61 @@ export async function POST(req: NextRequest) {
       redirect: 'manual',
     });
 
-    let responseText: string;
-
-    if (execRes.status >= 300 && execRes.status < 400) {
-      // Step 2: GET the redirect URL to retrieve the response JSON
-      const location = execRes.headers.get('location');
-      if (!location) {
-        // No location header — treat the initial response body as the answer
-        responseText = await execRes.text();
-      } else {
-        const getRes = await fetch(location, { method: 'GET' });
-        responseText = await getRes.text();
-        if (!getRes.ok && getRes.status !== 405) {
-          console.error('[sheets proxy] GET response URL failed:', getRes.status);
-        }
+    if (execRes.status < 300 || execRes.status >= 400) {
+      // No redirect — /exec responded directly (unusual)
+      const text = await execRes.text();
+      let body: Record<string, unknown> = {};
+      try { body = JSON.parse(text); } catch { /* ignore */ }
+      if (body.status === 'error') {
+        return NextResponse.json({ error: body.message }, { status: 500 });
       }
-    } else {
-      // No redirect — direct response from /exec
-      responseText = await execRes.text();
-    }
-
-    // Parse the Apps Script response
-    let body: Record<string, unknown> = {};
-    try {
-      body = JSON.parse(responseText);
-    } catch {
-      // Non-JSON from response delivery URL is normal when script returns HTML
-      // or when the response delivery URL itself can't be reached.
-      // The data was already written in Step 1 — treat as success if execRes
-      // was a redirect (302 = script accepted and ran the request).
-      if (execRes.status >= 300 && execRes.status < 400) {
-        console.log('[sheets proxy] script ran (302 received), treating as success despite non-JSON response');
-        return NextResponse.json({ synced: pitches.length });
+      if (!execRes.ok) {
+        return NextResponse.json(
+          { error: `Apps Script /exec returned ${execRes.status}: ${text.slice(0, 200)}` },
+          { status: 502 }
+        );
       }
-      console.error('[sheets proxy] non-JSON and no redirect:', responseText.slice(0, 300));
-      return NextResponse.json(
-        { error: `Apps Script returned non-JSON (status ${execRes.status}): ${responseText.slice(0, 200)}` },
-        { status: 502 }
-      );
+      return NextResponse.json({ synced: pitches.length });
     }
 
-    if (body.status === 'error') {
-      console.error('[sheets proxy] Apps Script error:', body.message);
-      return NextResponse.json({ error: body.message }, { status: 500 });
+    const location = execRes.headers.get('location');
+    if (!location) {
+      return NextResponse.json({ error: 'Apps Script returned redirect with no Location header' }, { status: 502 });
     }
 
-    console.log('[sheets proxy] synced', pitches.length, 'pitches. Apps Script count:', body.count);
-    return NextResponse.json({ synced: pitches.length });
+    // Step 2 — POST to redirect URL to execute doPost()
+    const runRes = await fetch(location, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(pitches),
+    });
+
+    // 405 is the normal response after doPost() runs — the execution succeeded,
+    // the response delivery channel just doesn't accept another POST.
+    if (runRes.status === 405) {
+      console.log('[sheets proxy] doPost ran (405 expected), synced', pitches.length);
+      return NextResponse.json({ synced: pitches.length });
+    }
+
+    // Any 2xx — also success, parse the body for logging
+    if (runRes.ok) {
+      const text = await runRes.text();
+      let body: Record<string, unknown> = {};
+      try { body = JSON.parse(text); } catch { /* ignore */ }
+      if (body.status === 'error') {
+        return NextResponse.json({ error: body.message }, { status: 500 });
+      }
+      console.log('[sheets proxy] synced', pitches.length, 'response:', body);
+      return NextResponse.json({ synced: pitches.length });
+    }
+
+    // Genuine failure on the execution step
+    const errText = await runRes.text();
+    console.error('[sheets proxy] execution step failed:', runRes.status, errText.slice(0, 300));
+    return NextResponse.json(
+      { error: `Apps Script execution returned ${runRes.status}: ${errText.slice(0, 200)}` },
+      { status: 502 }
+    );
 
   } catch (err) {
     console.error('[sheets proxy] fetch error:', err);
