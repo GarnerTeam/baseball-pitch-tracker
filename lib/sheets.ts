@@ -110,11 +110,13 @@ export async function syncQueueToSheets(
   if (!webhookUrl || queue.length === 0) return { synced: 0 };
   try {
     const flatRows = queue.map(flattenPitch);
-    await fetch(webhookUrl, {
+    // Use our own API proxy to avoid CORS issues with Google Apps Script redirects
+    const res = await fetch('/api/sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(flatRows),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl, pitches: flatRows }),
     });
+    if (!res.ok) return { synced: 0 };
     return { synced: queue.length };
   } catch {
     return { synced: 0 };
