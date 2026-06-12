@@ -27,9 +27,10 @@ export default function App() {
     );
   }
   return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col">
       <NotificationToast notification={state.notification} />
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Each tab screen manages its own scroll — parent must NOT clip with overflow-hidden */}
+      <div className="flex-1 min-h-0">
         {state.activeTab === 'pitch' && (
           <PitchScreen state={state} onSetPitchType={actions.setPitchType} onSetLocation={actions.setLocation} onSetSwing={actions.setSwing} onSetContact={actions.setContact} onRecordPitch={actions.recordPitch} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onUndoPitch={actions.undoPitch} onSetBatterHand={actions.setBatterHand} onToggleOverlay={actions.toggleOverlay} onSetOverlayFilter={actions.setOverlayFilter} onTabChange={actions.setTab} onSetBase={actions.setBase} />
         )}

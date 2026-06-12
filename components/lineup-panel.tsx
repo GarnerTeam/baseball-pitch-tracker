@@ -194,49 +194,83 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave }: {
     setEditing(false);
   }
 
+  // Truncate URL for display
+  const displayUrl = webhookUrl
+    ? webhookUrl.replace('https://script.google.com/macros/s/', '…/s/').slice(0, 38) + '…'
+    : '';
+
   return (
-    <div className={`mx-3 mb-4 mt-2 rounded-xl border ${isConnected && !editing ? 'border-emerald-700 bg-emerald-950/30' : 'border-amber-700 bg-amber-950/20'} overflow-hidden`}>
-      <div className="flex items-center justify-between px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[18px]">{isConnected && !editing ? '✅' : '⚠️'}</span>
-          <div>
-            <p className={`text-[15px] font-bold ${isConnected && !editing ? 'text-emerald-300' : 'text-amber-300'}`}>
+    <div className="mx-3 mb-6 mt-4">
+      {/* Section header */}
+      <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Google Sheets Sync</p>
+
+      <div className={`rounded-xl border-2 ${isConnected && !editing ? 'border-emerald-600 bg-emerald-950/40' : 'border-amber-600 bg-amber-950/30'}`}>
+        {/* Status bar */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="text-[28px] leading-none flex-shrink-0">
+            {isConnected && !editing ? '✅' : '⚠️'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className={`text-[18px] font-bold ${isConnected && !editing ? 'text-emerald-300' : 'text-amber-300'}`}>
               {isConnected && !editing ? 'Sheets Connected' : 'Sheets Not Connected'}
             </p>
+            {isConnected && !editing && (
+              <p className="text-slate-500 text-[13px] truncate mt-0.5">{displayUrl}</p>
+            )}
             {syncQueue > 0 && (
-              <p className="text-amber-400 text-[13px]">{syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} pending sync</p>
+              <p className="text-amber-400 text-[14px] font-medium mt-0.5">
+                ⏳ {syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} pending sync
+              </p>
+            )}
+            {isConnected && !editing && syncQueue === 0 && (
+              <p className="text-emerald-600 text-[13px] mt-0.5">All pitches synced</p>
             )}
           </div>
+          {isConnected && !editing && (
+            <button
+              onClick={() => { setVal(webhookUrl); setEditing(true); }}
+              className="flex-shrink-0 px-3 h-9 rounded-lg bg-slate-800 border border-slate-600 text-slate-300 text-[15px] font-medium hover:bg-slate-700"
+            >
+              Change
+            </button>
+          )}
         </div>
-        {isConnected && !editing && (
-          <button onClick={() => { setVal(webhookUrl); setEditing(true); }} className="text-slate-500 text-[15px] underline">
-            Change
-          </button>
+
+        {/* Connect / Edit form */}
+        {(!isConnected || editing) && (
+          <div className="px-4 pb-4 space-y-3 border-t border-slate-700/60 pt-3">
+            <p className="text-slate-400 text-[15px]">
+              Paste your Google Apps Script web app URL:
+            </p>
+            <input
+              value={val}
+              onChange={e => setVal(e.target.value)}
+              placeholder="https://script.google.com/macros/s/..."
+              className="w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[14px] outline-none focus:border-emerald-500 placeholder:text-slate-600"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={save}
+                disabled={!val.trim()}
+                className="flex-1 h-11 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-[18px] font-bold"
+              >
+                Connect Sheets
+              </button>
+              {editing && (
+                <button
+                  onClick={() => setEditing(false)}
+                  className="px-4 h-11 rounded-xl bg-slate-700 text-slate-300 text-[16px]"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
-      {(!isConnected || editing) && (
-        <div className="px-3 pb-3 space-y-2">
-          <input
-            value={val}
-            onChange={e => setVal(e.target.value)}
-            placeholder="https://script.google.com/macros/s/..."
-            className="w-full h-10 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[13px] outline-none focus:border-blue-500 placeholder:text-slate-600"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <div className="flex gap-2">
-            <button onClick={save} disabled={!val.trim()} className="flex-1 h-9 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-[15px] font-semibold">
-              Connect
-            </button>
-            {editing && (
-              <button onClick={() => setEditing(false)} className="px-3 h-9 rounded-xl bg-slate-700 text-slate-300 text-[15px]">
-                Cancel
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -400,7 +434,7 @@ export function LineupPanel({
 
   return (
     <>
-    <div className="flex flex-col h-full overflow-y-auto bg-slate-950 text-slate-100">
+    <div className="flex flex-col h-full overflow-y-scroll bg-slate-950 text-slate-100" style={{ WebkitOverflowScrolling: "touch" }}>
 
       {/* ── At-Bat Controls ─────────────────────────────────────────────── */}
       <div className="px-4 pt-4 pb-2">
