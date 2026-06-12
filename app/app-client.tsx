@@ -17,7 +17,7 @@ const NAV_TABS = [
 ];
 
 export default function App() {
-  const { state, actions } = useGame();
+  const { state, actions, syncStatus } = useGame();
   if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} />;
   if (state.phase === 'hit-mode') {
     return (
@@ -35,7 +35,7 @@ export default function App() {
           <PitchScreen state={state} onSetPitchType={actions.setPitchType} onSetLocation={actions.setLocation} onSetSwing={actions.setSwing} onSetContact={actions.setContact} onRecordPitch={actions.recordPitch} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onUndoPitch={actions.undoPitch} onSetBatterHand={actions.setBatterHand} onToggleOverlay={actions.toggleOverlay} onSetOverlayFilter={actions.setOverlayFilter} onTabChange={actions.setTab} onSetBase={actions.setBase} />
         )}
         {state.activeTab === 'lineup' && (
-          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onSetWebhookUrl={actions.setSheetsUrl} />
+          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onSetWebhookUrl={actions.setSheetsUrl} syncStatus={syncStatus} />
         )}
         {state.activeTab === 'analytics' && <AnalyticsScreen state={state} />}
         {state.activeTab === 'log' && <GameLog state={state} />}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useReducer, useEffect, useCallback, useRef } from 'react';
+import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import {
   GameState, BaseState,
   AtBatSnapshot,
@@ -552,23 +552,27 @@ export function useGame() {
   // Sync queue when online — isSyncing ref prevents concurrent fetches that
   // would cause the same pitch to be written to Sheets multiple times.
   const isSyncing = useRef(false);
+  const [syncStatus, setSyncStatus] = useState<{ ok: boolean; message: string; ts: number } | null>(null);
+
   useEffect(() => {
-    console.log('[sync] queue:', state.syncQueue.length, 'url:', state.sheetsWebhookUrl ? 'SET' : 'EMPTY', 'syncing:', isSyncing.current);
     if (state.syncQueue.length === 0 || !state.sheetsWebhookUrl || isSyncing.current) return;
     isSyncing.current = true;
-    // Capture the queue at this moment so the .then() closure uses the right slice
     const snapshot = state.syncQueue;
-    console.log('[sync] firing for', snapshot.length, 'pitches');
-    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced }) => {
+    setSyncStatus(s => s?.ok === false ? s : null); // clear error when retrying
+    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error }) => {
       isSyncing.current = false;
-      console.log('[sync] result: synced=', synced);
       if (synced > 0) {
         const ids = snapshot.slice(0, synced).map((p) => p.id);
         dispatch({ type: 'MARK_SYNCED', pitchIds: ids });
+        setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}`, ts: Date.now() });
+      } else if (error) {
+        setSyncStatus({ ok: false, message: error, ts: Date.now() });
+        console.error('[sync] error from proxy:', error);
       }
     }).catch((err) => {
-      console.error('[sync] error:', err);
-      isSyncing.current = false; // release lock on network error so next pitch can retry
+      isSyncing.current = false;
+      setSyncStatus({ ok: false, message: String(err), ts: Date.now() });
+      console.error('[sync] network error:', err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.syncQueue.length, state.sheetsWebhookUrl]);
@@ -583,6 +587,7 @@ export function useGame() {
 
   return {
     state,
+    syncStatus,
     actions: {
       startGame: useCallback((homeTeam: string, visitingTeam: string) =>
         dispatch({ type: 'START_GAME', homeTeam, visitingTeam }), []),

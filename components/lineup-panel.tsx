@@ -4,6 +4,12 @@ import { GameState, Player, AtBat, PitchRecord } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 
+interface SyncStatus {
+  ok: boolean;
+  message: string;
+  ts: number;
+}
+
 interface LineupPanelProps {
   state: GameState;
   onNextBatter: () => void;
@@ -15,6 +21,7 @@ interface LineupPanelProps {
   onSetBatterAt: (idx: number, player: Player) => void;
   onUndoLastEnd: () => void;
   onSetWebhookUrl: (url: string) => void;
+  syncStatus?: SyncStatus | null;
 }
 
 /** K = swinging strikeout  |  mirrored K = strikeout looking */
@@ -180,10 +187,11 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
 }
 
 // ── Sheets URL Panel ──────────────────────────────────────────────────────────
-function SheetsUrlPanel({ webhookUrl, syncQueue, onSave }: {
+function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
   webhookUrl: string;
   syncQueue: number;
   onSave: (url: string) => void;
+  syncStatus?: SyncStatus | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(webhookUrl);
@@ -222,16 +230,22 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave }: {
                 ⏳ {syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} pending sync
               </p>
             )}
-            {isConnected && !editing && syncQueue === 0 && (
+            {isConnected && !editing && syncQueue === 0 && !syncStatus && (
               <p className="text-emerald-600 text-[13px] mt-0.5">All pitches synced</p>
+            )}
+            {isConnected && !editing && syncStatus?.ok && (
+              <p className="text-emerald-400 text-[13px] mt-0.5">✓ {syncStatus.message}</p>
+            )}
+            {isConnected && !editing && syncStatus && !syncStatus.ok && (
+              <p className="text-red-400 text-[13px] mt-0.5 leading-tight">⚠ Sync error — tap Change to verify URL</p>
             )}
           </div>
           {isConnected && !editing && (
             <button
               onClick={() => { setVal(webhookUrl); setEditing(true); }}
-              className="flex-shrink-0 px-3 h-9 rounded-lg bg-slate-800 border border-slate-600 text-slate-300 text-[15px] font-medium hover:bg-slate-700"
+              className={`flex-shrink-0 px-3 h-9 rounded-lg border text-[15px] font-medium ${syncStatus && !syncStatus.ok ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}
             >
-              Change
+              {syncStatus && !syncStatus.ok ? 'Fix URL' : 'Change'}
             </button>
           )}
         </div>
@@ -278,7 +292,7 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave }: {
 export function LineupPanel({
   state, onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
-  onUndoLastEnd, onSetWebhookUrl,
+  onUndoLastEnd, onSetWebhookUrl, syncStatus,
 }: LineupPanelProps) {
   const {
     pitcher, lineup, currentBatterIndex, allAtBats,
@@ -755,6 +769,7 @@ export function LineupPanel({
         webhookUrl={state.sheetsWebhookUrl}
         syncQueue={state.syncQueue.length}
         onSave={onSetWebhookUrl}
+        syncStatus={syncStatus}
       />
 
     </div>

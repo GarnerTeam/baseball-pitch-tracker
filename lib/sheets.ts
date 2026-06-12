@@ -106,20 +106,22 @@ function flattenPitch(p: PitchRecord) {
 export async function syncQueueToSheets(
   webhookUrl: string,
   queue: PitchRecord[]
-): Promise<{ synced: number }> {
+): Promise<{ synced: number; error?: string }> {
   if (!webhookUrl || queue.length === 0) return { synced: 0 };
   try {
     const flatRows = queue.map(flattenPitch);
-    // Use our own API proxy to avoid CORS issues with Google Apps Script redirects
     const res = await fetch('/api/sheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ webhookUrl, pitches: flatRows }),
     });
-    if (!res.ok) return { synced: 0 };
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { synced: 0, error: body.error ?? `HTTP ${res.status}` };
+    }
     return { synced: queue.length };
-  } catch {
-    return { synced: 0 };
+  } catch (err) {
+    return { synced: 0, error: String(err) };
   }
 }
 
