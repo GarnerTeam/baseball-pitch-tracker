@@ -524,7 +524,7 @@ export function useGame() {
         // DO NOT change the storage key — that would wipe existing game data.
         return {
           ...parsed,
-          sheetsWebhookUrl: DEFAULT_WEBHOOK_URL || parsed.sheetsWebhookUrl,
+          sheetsWebhookUrl: parsed.sheetsWebhookUrl || DEFAULT_WEBHOOK_URL,
           // Fields added in later releases — may be absent in old saves
           homeTeam:                    parsed.homeTeam                    ?? '',
           visitingTeam:                parsed.visitingTeam                ?? '',
@@ -559,12 +559,14 @@ export function useGame() {
     isSyncing.current = true;
     const snapshot = state.syncQueue;
     setSyncStatus(s => s?.ok === false ? s : null); // clear error when retrying
-    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error }) => {
+    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error, _urlTail }) => {
       isSyncing.current = false;
       if (synced > 0) {
         const ids = snapshot.slice(0, synced).map((p) => p.id);
         dispatch({ type: 'MARK_SYNCED', pitchIds: ids });
-        setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}`, ts: Date.now() });
+        const urlNote = _urlTail ? ` (…${_urlTail.slice(-15)})` : '';
+        setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}${urlNote}`, ts: Date.now() });
+        console.log('[sync] success. url tail:', _urlTail, '| pitches:', synced);
       } else if (error) {
         setSyncStatus({ ok: false, message: error, ts: Date.now() });
         console.error('[sync] error from proxy:', error);

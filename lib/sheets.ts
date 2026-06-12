@@ -106,7 +106,7 @@ function flattenPitch(p: PitchRecord) {
 export async function syncQueueToSheets(
   webhookUrl: string,
   queue: PitchRecord[]
-): Promise<{ synced: number; error?: string }> {
+): Promise<{ synced: number; error?: string; _urlTail?: string }> {
   if (!webhookUrl || queue.length === 0) return { synced: 0 };
   try {
     const flatRows = queue.map(flattenPitch);
@@ -119,7 +119,7 @@ export async function syncQueueToSheets(
     if (!res.ok) {
       return { synced: 0, error: body.error ?? `HTTP ${res.status}` };
     }
-    return { synced: queue.length };
+    return { synced: queue.length, _urlTail: body._urlTail };
   } catch (err) {
     return { synced: 0, error: String(err) };
   }

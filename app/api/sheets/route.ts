@@ -49,16 +49,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing webhookUrl or pitches' }, { status: 400 });
     }
 
+    // Debug: log the URL being used (last 40 chars to avoid logging full secret)
+    const urlTail = webhookUrl.slice(-40);
+    console.log('[sheets proxy] using url tail:', urlTail, '| pitches:', pitches.length);
+
     const bodyStr = JSON.stringify(pitches);
     const { status, text, hops } = await postFollowingRedirects(webhookUrl, bodyStr);
 
-    console.log('[sheets proxy] hops:', hops.length, 'final status:', status);
+    console.log('[sheets proxy] hops:', hops.length, 'final status:', status, 'url tail:', urlTail);
 
     // 405 after execution is the normal Google Apps Script response —
     // doPost() ran and wrote the data; the response delivery channel
     // doesn't accept another POST, hence 405.
     if (status === 405) {
-      return NextResponse.json({ synced: pitches.length });
+      return NextResponse.json({ synced: pitches.length, _hops: hops.length, _urlTail: urlTail });
     }
 
     // Successful JSON response from doPost
@@ -68,13 +72,13 @@ export async function POST(req: NextRequest) {
       if (body.status === 'error') {
         return NextResponse.json({ error: body.message }, { status: 500 });
       }
-      return NextResponse.json({ synced: pitches.length });
+      return NextResponse.json({ synced: pitches.length, _hops: hops.length, _urlTail: urlTail });
     }
 
     // 0 = too many redirects, or any other unexpected status
     console.error('[sheets proxy] unexpected status', status, text.slice(0, 300));
     return NextResponse.json(
-      { error: `Unexpected status ${status} after ${hops.length} hops: ${text.slice(0, 200)}` },
+      { error: `Unexpected status ${status} after ${hops.length} hops. URL tail: ...${urlTail}. Body: ${text.slice(0, 200)}` },
       { status: 502 }
     );
 
