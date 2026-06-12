@@ -14,6 +14,7 @@ interface LineupPanelProps {
   onRemoveBatter: (idx: number) => void;
   onSetBatterAt: (idx: number, player: Player) => void;
   onUndoLastEnd: () => void;
+  onSetWebhookUrl: (url: string) => void;
 }
 
 /** K = swinging strikeout  |  mirrored K = strikeout looking */
@@ -178,10 +179,72 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
   );
 }
 
+// ── Sheets URL Panel ──────────────────────────────────────────────────────────
+function SheetsUrlPanel({ webhookUrl, syncQueue, onSave }: {
+  webhookUrl: string;
+  syncQueue: number;
+  onSave: (url: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(webhookUrl);
+  const isConnected = !!webhookUrl?.trim();
+
+  function save() {
+    onSave(val.trim());
+    setEditing(false);
+  }
+
+  return (
+    <div className={`mx-3 mb-4 mt-2 rounded-xl border ${isConnected && !editing ? 'border-emerald-700 bg-emerald-950/30' : 'border-amber-700 bg-amber-950/20'} overflow-hidden`}>
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px]">{isConnected && !editing ? '✅' : '⚠️'}</span>
+          <div>
+            <p className={`text-[15px] font-bold ${isConnected && !editing ? 'text-emerald-300' : 'text-amber-300'}`}>
+              {isConnected && !editing ? 'Sheets Connected' : 'Sheets Not Connected'}
+            </p>
+            {syncQueue > 0 && (
+              <p className="text-amber-400 text-[13px]">{syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} pending sync</p>
+            )}
+          </div>
+        </div>
+        {isConnected && !editing && (
+          <button onClick={() => { setVal(webhookUrl); setEditing(true); }} className="text-slate-500 text-[15px] underline">
+            Change
+          </button>
+        )}
+      </div>
+      {(!isConnected || editing) && (
+        <div className="px-3 pb-3 space-y-2">
+          <input
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            placeholder="https://script.google.com/macros/s/..."
+            className="w-full h-10 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[13px] outline-none focus:border-blue-500 placeholder:text-slate-600"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <div className="flex gap-2">
+            <button onClick={save} disabled={!val.trim()} className="flex-1 h-9 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-[15px] font-semibold">
+              Connect
+            </button>
+            {editing && (
+              <button onClick={() => setEditing(false)} className="px-3 h-9 rounded-xl bg-slate-700 text-slate-300 text-[15px]">
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LineupPanel({
   state, onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
-  onUndoLastEnd,
+  onUndoLastEnd, onSetWebhookUrl,
 }: LineupPanelProps) {
   const {
     pitcher, lineup, currentBatterIndex, allAtBats,
@@ -652,6 +715,13 @@ export function LineupPanel({
           </button>
         )}
       </div>
+
+      {/* ── Google Sheets URL ── */}
+      <SheetsUrlPanel
+        webhookUrl={state.sheetsWebhookUrl}
+        syncQueue={state.syncQueue.length}
+        onSave={onSetWebhookUrl}
+      />
 
     </div>
 
