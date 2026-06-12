@@ -237,7 +237,7 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
               <p className="text-emerald-400 text-[13px] mt-0.5">✓ {syncStatus.message}</p>
             )}
             {isConnected && !editing && syncStatus && !syncStatus.ok && (
-              <p className="text-red-400 text-[13px] mt-0.5 leading-tight">⚠ Sync error — tap Change to verify URL</p>
+              <p className="text-red-400 text-[14px] mt-0.5 font-semibold">⚠ Sync failed</p>
             )}
           </div>
           {isConnected && !editing && (
@@ -250,16 +250,43 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
           )}
         </div>
 
+        {/* Error detail — shown when sync failed and not yet editing */}
+        {isConnected && !editing && syncStatus && !syncStatus.ok && (
+          <div className="px-4 pb-3 border-t border-red-900/40 pt-3 space-y-2">
+            <p className="text-red-300 text-[14px] font-semibold">Error from server:</p>
+            <p className="text-red-400/90 text-[13px] font-mono break-all leading-snug bg-red-950/50 rounded-lg px-3 py-2">
+              {syncStatus.message}
+            </p>
+            <p className="text-slate-400 text-[14px]">
+              Most likely causes:
+            </p>
+            <ul className="text-slate-400 text-[13px] space-y-1 list-none pl-1">
+              <li>• Script not deployed as a Web App yet</li>
+              <li>• Access set to <strong className="text-slate-300">"Only myself"</strong> — must be <strong className="text-slate-300">"Anyone"</strong></li>
+              <li>• Pasted the editor URL instead of the /exec deployment URL</li>
+            </ul>
+            <button
+              onClick={() => { setVal(webhookUrl); setEditing(true); }}
+              className="w-full h-11 rounded-xl bg-red-700 hover:bg-red-600 text-white text-[18px] font-bold mt-1"
+            >
+              Update URL
+            </button>
+          </div>
+        )}
+
         {/* Connect / Edit form */}
         {(!isConnected || editing) && (
           <div className="px-4 pb-4 space-y-3 border-t border-slate-700/60 pt-3">
             <p className="text-slate-400 text-[15px]">
               Paste your Google Apps Script web app URL:
             </p>
+            <p className="text-slate-500 text-[13px] -mt-1">
+              In the script editor: Deploy → Manage deployments → copy the /exec URL
+            </p>
             <input
               value={val}
               onChange={e => setVal(e.target.value)}
-              placeholder="https://script.google.com/macros/s/..."
+              placeholder="https://script.google.com/macros/s/…/exec"
               className="w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[14px] outline-none focus:border-emerald-500 placeholder:text-slate-600"
               autoCapitalize="none"
               autoCorrect="off"
