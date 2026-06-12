@@ -112,7 +112,6 @@ export async function syncQueueToSheets(
     const flatRows = queue.map(flattenPitch);
     await fetch(webhookUrl, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(flatRows),
     });
