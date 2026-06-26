@@ -103,6 +103,27 @@ function cellLabel(row: number, col: number, h: 'R' | 'L'): string {
   return '';
 }
 
+// ── Vertical bat SVG ─────────────────────────────────────────────────────────
+// Barrel at top, knob at bottom — placed left for RHB, right for LHB
+function BatSVG() {
+  return (
+    <svg
+      viewBox="0 0 20 300"
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: 14, height: '100%', flexShrink: 0, display: 'block' }}
+    >
+      {/* Barrel */}
+      <rect x="1" y="2"   width="18" height="130" rx="9"  fill="#a16207" />
+      {/* Taper barrel → handle */}
+      <polygon points="1,128 19,128 14,178 6,178" fill="#92400e" />
+      {/* Handle */}
+      <rect x="6" y="176" width="8"  height="106" rx="4"  fill="#78350f" />
+      {/* Knob */}
+      <ellipse cx="10" cy="287" rx="10" ry="7" fill="#6b2d0f" />
+    </svg>
+  );
+}
+
 // ── Spray chart SVG constants ─────────────────────────────────────────────────
 const SW=400,SH=390,SHX=200,SHY=365;
 const SR_FENCE=270,SR_WARN=220;
@@ -340,61 +361,85 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                 <div className="bg-slate-900 rounded-2xl p-3 border border-slate-800">
                   <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2 text-center">Swing% per Zone — count / swing%</p>
 
-                  {/* Top axis */}
-                  <div className="grid mb-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
-                    {[gridHand === 'R' ? 'In' : 'Out', '', 'High', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
-                      <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
-                    ))}
-                  </div>
+                  {/* Grid + bat wrapper */}
+                  <div className="flex items-stretch gap-1.5">
 
-                  {/* Grid */}
-                  <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                    {Array.from({ length: 5 }).flatMap((_, row) =>
-                      Array.from({ length: 5 }).map((_, col) => {
-                        const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
-                        const zn  = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
-                        const key = cellLocKey(row, col, gridHand);
-                        const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0 }) : { total:0, swings:0, contacts:0 };
-                        const swPct = s.total > 0 ? Math.round(s.swings / s.total * 100) : null;
-                        const bg  = swingBg(swPct ?? 0, s.total);
-                        const fg  = textColor(bg);
-                        const lbl = cellLabel(row, col, gridHand);
-
-                        return (
-                          <div
-                            key={`${row}-${col}`}
-                            className="flex flex-col items-center justify-center relative select-none rounded-sm"
-                            style={{
-                              background: bg, color: fg,
-                              aspectRatio: '1', minHeight: 58,
-                              outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
-                            }}
-                          >
-                            {zn && <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>{zn}</span>}
-                            {!isStrike && lbl && <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>{lbl}</span>}
-
-                            {s.total > 0 ? (
-                              <>
-                                <span className="font-black leading-none" style={{ fontSize: 20 }}>{s.total}</span>
-                                <span className="font-bold leading-none mt-[2px]" style={{ fontSize: 13 }}>
-                                  {swPct !== null ? `${swPct}%` : '—'}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="font-black opacity-15" style={{ fontSize: 14 }}>—</span>
-                            )}
-                          </div>
-                        );
-                      })
+                    {/* RHB bat — left side (batter stands left from pitcher's view) */}
+                    {gridHand === 'R' && (
+                      <div className="flex items-stretch py-[14px]">
+                        <BatSVG />
+                      </div>
                     )}
-                  </div>
 
-                  {/* Bottom axis */}
-                  <div className="grid mt-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
-                    {[gridHand === 'R' ? 'In' : 'Out', '', 'Low', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
-                      <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
-                    ))}
-                  </div>
+                    {/* Grid column: top axis + cells + bottom axis */}
+                    <div className="flex-1 min-w-0">
+
+                      {/* Top axis */}
+                      <div className="grid mb-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+                        {[gridHand === 'R' ? 'In' : 'Out', '', 'High', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
+                          <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
+                        ))}
+                      </div>
+
+                      {/* Grid */}
+                      <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                        {Array.from({ length: 5 }).flatMap((_, row) =>
+                          Array.from({ length: 5 }).map((_, col) => {
+                            const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
+                            const zn  = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
+                            const key = cellLocKey(row, col, gridHand);
+                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0 }) : { total:0, swings:0, contacts:0 };
+                            const swPct = s.total > 0 ? Math.round(s.swings / s.total * 100) : null;
+                            const bg  = swingBg(swPct ?? 0, s.total);
+                            const fg  = textColor(bg);
+                            const lbl = cellLabel(row, col, gridHand);
+
+                            return (
+                              <div
+                                key={`${row}-${col}`}
+                                className="flex flex-col items-center justify-center relative select-none rounded-sm"
+                                style={{
+                                  background: bg, color: fg,
+                                  aspectRatio: '1', minHeight: 58,
+                                  outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
+                                }}
+                              >
+                                {zn && <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>{zn}</span>}
+                                {!isStrike && lbl && <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>{lbl}</span>}
+
+                                {s.total > 0 ? (
+                                  <>
+                                    <span className="font-black leading-none" style={{ fontSize: 20 }}>{s.total}</span>
+                                    <span className="font-bold leading-none mt-[2px]" style={{ fontSize: 13 }}>
+                                      {swPct !== null ? `${swPct}%` : '—'}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="font-black opacity-15" style={{ fontSize: 14 }}>—</span>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Bottom axis */}
+                      <div className="grid mt-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+                        {[gridHand === 'R' ? 'In' : 'Out', '', 'Low', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
+                          <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
+                        ))}
+                      </div>
+
+                    </div>{/* end grid column */}
+
+                    {/* LHB bat — right side */}
+                    {gridHand === 'L' && (
+                      <div className="flex items-stretch py-[14px]">
+                        <BatSVG />
+                      </div>
+                    )}
+
+                  </div>{/* end grid + bat wrapper */}
 
                   {/* Legend */}
                   <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
