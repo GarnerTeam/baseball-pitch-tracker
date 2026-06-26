@@ -3,6 +3,7 @@ import { useState, ReactNode } from 'react';
 import { GameState, Player, AtBat, PitchRecord } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
+import { BatterHistoryModal } from '@/components/batter-history-modal';
 
 interface SyncStatus {
   ok: boolean;
@@ -341,6 +342,7 @@ export function LineupPanel({
 
   // ── Slot state ────────────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState<{ idx: number; view: 'details' | 'edit' | 'edit-existing' } | null>(null);
+  const [historyPlayer, setHistoryPlayer] = useState<{ name: string; number: string } | null>(null);
   const [slotForm, setSlotForm] = useState({ name: '', num: '' });
   const [extraSlots, setExtraSlots] = useState(0);
 
@@ -696,6 +698,16 @@ export function LineupPanel({
                       )}
                       {/* Spray chart — shows all hits across every at-bat for this batter */}
                       <BatterSprayChart allABs={allBatterABs} />
+
+                      {/* Full history button — opens heat map + spray chart from all games */}
+                      {state.sheetsWebhookUrl && (
+                        <button
+                          onClick={() => setHistoryPlayer({ name: player!.name, number: player!.number })}
+                          className="w-full py-2.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-[18px] font-semibold flex items-center justify-center gap-2"
+                        >
+                          📊 Full History &amp; Tendencies
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
@@ -800,6 +812,16 @@ export function LineupPanel({
       />
 
     </div>
+
+      {/* ── Batter History Modal ─────────────────────────────────────────── */}
+      {historyPlayer && (
+        <BatterHistoryModal
+          playerName={historyPlayer.name}
+          playerNumber={historyPlayer.number}
+          webhookUrl={state.sheetsWebhookUrl}
+          onClose={() => setHistoryPlayer(null)}
+        />
+      )}
 
       {/* ── Pitcher Stats Modal ──────────────────────────────────────────── */}
       {statsPitcher && (

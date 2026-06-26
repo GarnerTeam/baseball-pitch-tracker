@@ -34,6 +34,94 @@ const HEADER_GROUPS = [
   { label:'Base',    cols:[29,33], bg:'#1a4a3a', fg:'#ffffff' },
 ];
 
+/**
+ * doGet — returns pitch history for a batter as JSON.
+ * Called by the app's /api/sheets/history proxy.
+ *
+ * Query params:
+ *   action  = "history" (required)
+ *   batter  = batter name (case-insensitive)
+ *   num     = batter jersey number
+ *
+ * At least one of batter or num is required.
+ */
+function doGet(e) {
+  try {
+    var params = (e && e.parameter) ? e.parameter : {};
+    var action = params.action || 'history';
+
+    if (action === 'history') {
+      var batterName = (params.batter || '').trim();
+      var batterNum  = (params.num   || '').trim();
+      if (!batterName && !batterNum) {
+        return jsonOut({ error: 'Provide batter name or number', pitches: [] });
+      }
+      return getBatterHistory(batterName, batterNum);
+    }
+
+    return jsonOut({ error: 'Unknown action: ' + action });
+  } catch (err) {
+    Logger.log('doGet error: ' + err.toString());
+    return jsonOut({ error: err.toString() });
+  }
+}
+
+function getBatterHistory(batterName, batterNum) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet) return jsonOut({ error: 'No sheet named "Pitches"', pitches: [] });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ pitches: [], count: 0 });
+
+  var lastCol = sheet.getLastColumn();
+  var data    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = data[0].map(function (h) { return String(h).trim(); });
+
+  var nameIdx = headers.indexOf('batterName');
+  var numIdx  = headers.indexOf('batterNumber');
+  if (nameIdx === -1 && numIdx === -1) {
+    return jsonOut({ error: 'batterName/batterNumber columns not found', pitches: [] });
+  }
+
+  var nameLower = batterName.toLowerCase();
+  var pitches   = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    // Skip blank rows
+    if (!row[nameIdx] && !row[numIdx]) continue;
+
+    var rowName = String(row[nameIdx] || '').toLowerCase().trim();
+    var rowNum  = String(row[numIdx]  || '').trim();
+
+    var match = false;
+    if (nameLower && rowName === nameLower) match = true;
+    if (batterNum  && rowNum  === batterNum)  match = true;
+
+    if (!match) continue;
+
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      var val = row[j];
+      if (val instanceof Date) {
+        obj[headers[j]] = Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
+      } else {
+        obj[headers[j]] = (val === null || val === undefined) ? '' : val;
+      }
+    }
+    pitches.push(obj);
+  }
+
+  return jsonOut({ pitches: pitches, count: pitches.length });
+}
+
+function jsonOut(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   try {
     Logger.log('doPost called');
