@@ -63,6 +63,23 @@ function bestPitch(map: Record<string, number>): string | null {
   return top.length > 0 ? `${top[0][0]} ×${top[0][1]}` : null;
 }
 
+// ── Pitch-type colour maps (match pitch page) ────────────────────────────────
+// Display label (Ch not CH) and colours from PITCH_TYPE_COLORS in types/index.ts
+const PT_LABEL: Record<string, string> = { FB:'FB', CB:'CB', SL:'SL', CH:'Ch' };
+const PT_COLOR: Record<string, string> = {
+  FB: '#ef4444',  // red
+  CB: '#22c55e',  // green
+  SL: '#8b5cf6',  // purple
+  CH: '#f97316',  // orange
+};
+// Dark cell background tinted by pitch type
+const PT_BG: Record<string, string> = {
+  FB: '#2d0707',
+  CB: '#072d07',
+  SL: '#10062d',
+  CH: '#2d1207',
+};
+
 // ── Location normalizer ───────────────────────────────────────────────────────
 // When batter hand was null at record time, ballLocationLabel() falls back to
 // "Left"/"Right"/"L"/"R" instead of "In"/"Out". We remap using the pitch's own
@@ -459,7 +476,7 @@ export function BatterHistoryModal({
 
                 {/* 5×5 grid */}
                 <div className="bg-slate-900 rounded-2xl p-3 border border-slate-800">
-                  <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2 text-center">Swing% per Zone — count / swing%</p>
+                  <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2 text-center">Pitch Types per Zone · outlined = strike zone</p>
 
                   {/* Grid + bat wrapper */}
                   <div className="flex items-stretch gap-1.5">
@@ -489,38 +506,45 @@ export function BatterHistoryModal({
                             const zn  = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
-                            const swPct = s.total > 0 ? Math.round(s.swings / s.total * 100) : null;
-                            const bg  = swingBg(swPct ?? 0, s.total);
-                            const fg  = textColor(bg);
                             const lbl = cellLabel(row, col, gridHand);
+                            // Dominant pitch type → cell tint
+                            const domPT = topTypes(s.types, 1)[0]?.[0] ?? null;
+                            const cellBgColor = s.total > 0 && domPT ? (PT_BG[domPT] ?? '#0f172a') : '#0f172a';
 
                             return (
                               <div
                                 key={`${row}-${col}`}
                                 className="flex flex-col items-center justify-center relative select-none rounded-sm"
                                 style={{
-                                  background: bg, color: fg,
+                                  background: cellBgColor,
                                   aspectRatio: '1', minHeight: 58,
-                                  outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
+                                  outline: isStrike ? '1.5px solid rgba(148,163,184,0.40)' : '1px solid rgba(255,255,255,0.05)',
                                 }}
                               >
-                                {zn && !isShadowCell(row, col) && <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>{zn}</span>}
-                                {!isStrike && lbl && !isShadowCell(row, col) && <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>{lbl}</span>}
+                                {/* Zone number (strike) or ball-zone label */}
+                                {zn && !isShadowCell(row, col) && (
+                                  <span className="absolute top-[2px] left-[3px] font-bold leading-none" style={{ fontSize: 9, color: 'rgba(148,163,184,0.5)' }}>{zn}</span>
+                                )}
+                                {!isStrike && lbl && !isShadowCell(row, col) && (
+                                  <span className="absolute top-[2px] inset-x-0 text-center leading-none" style={{ fontSize: 7, color: 'rgba(148,163,184,0.4)' }}>{lbl}</span>
+                                )}
 
-                                {/* Shadow cells show heat colour only — no count (avoids double-counting corner pairs) */}
+                                {/* Shadow cells: background tint only, no numbers */}
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
-                                    <span className="font-black leading-none" style={{ fontSize: 20 }}>{s.total}</span>
-                                    <span className="font-bold leading-none mt-[1px]" style={{ fontSize: 11 }}>
-                                      {swPct !== null ? `${swPct}%sw` : '—'}
-                                    </span>
-                                    {/* Pitch type breakdown */}
-                                    <span className="leading-none mt-[1px] text-center px-0.5" style={{ fontSize: 7, opacity: 0.8, letterSpacing: '0.01em' }}>
-                                      {topTypes(s.types, 3).map(([t, n]) => `${t}·${n}`).join(' ')}
-                                    </span>
+                                    {/* Total pitch count */}
+                                    <span className="font-black leading-none text-white" style={{ fontSize: 20 }}>{s.total}</span>
+                                    {/* Pitch type breakdown — each type in its colour */}
+                                    <div className="flex flex-wrap items-center justify-center gap-x-[3px] gap-y-0 mt-[2px] px-0.5">
+                                      {topTypes(s.types, 4).map(([t, n]) => (
+                                        <span key={t} className="font-black leading-none" style={{ fontSize: 9, color: PT_COLOR[t] ?? '#94a3b8' }}>
+                                          {PT_LABEL[t] ?? t}·{n}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </>
                                 ) : (
-                                  <span className="font-black opacity-15" style={{ fontSize: 14 }}>—</span>
+                                  <span className="font-black" style={{ fontSize: 14, color: 'rgba(100,116,139,0.25)' }}>—</span>
                                 )}
                               </div>
                             );
