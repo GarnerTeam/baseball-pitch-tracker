@@ -481,8 +481,8 @@ export function LineupPanel({
       <div className="px-4 pt-4 pb-2">
         <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">At-Bat Controls</p>
         <div className="grid grid-cols-3 gap-2">
-          <button onClick={onNextBatter} className="py-3 rounded-xl bg-green-700 hover:bg-green-600 text-white text-[21px] font-medium">Next Batter</button>
-          <button onClick={onPrevBatter} className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[21px] font-medium">← Prev</button>
+          <button onClick={onPrevBatter} className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[21px] font-medium">‹ Prev Batter</button>
+          <button onClick={onNextBatter} className="py-3 rounded-xl bg-green-700 hover:bg-green-600 text-white text-[21px] font-medium">Next Batter ›</button>
           <button onClick={onEndAtBat}   className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[21px] font-medium">End AB</button>
         </div>
         {lastCompletedAtBatSnapshot && (
