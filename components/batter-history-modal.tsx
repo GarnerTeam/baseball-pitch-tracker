@@ -206,22 +206,58 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
             ? ['B-Out-Hi', 'B-Out', 'B-Out-Lo']
             : ['B-In-Hi', 'B-In', 'B-In-Lo'],
   };
-  const dirStats: Record<Dir, { total: number; swings: number }> = {
+  // Ball-zone chase (used for Chase Bait card only)
+  const dirChase: Record<Dir, { total: number; swings: number }> = {
     High: {total:0,swings:0}, Low: {total:0,swings:0},
     In:   {total:0,swings:0}, Out: {total:0,swings:0},
   };
   for (const [dir, keys] of Object.entries(dirKeys) as [Dir, string[]][]) {
     for (const k of keys) {
       const s = locStats[k];
-      if (s) { dirStats[dir].total += s.total; dirStats[dir].swings += s.swings; }
+      if (s) { dirChase[dir].total += s.total; dirChase[dir].swings += s.swings; }
     }
   }
-  const dirPct = (d: Dir) =>
-    dirStats[d].total >= 1 ? Math.round(dirStats[d].swings / dirStats[d].total * 100) : null;
+  const dirChasePct = (d: Dir) =>
+    dirChase[d].total >= 1 ? Math.round(dirChase[d].swings / dirChase[d].total * 100) : null;
 
   const bestChaseDir = (['High','Low','In','Out'] as Dir[])
-    .map(d => ({ d, pct: dirPct(d) ?? -1 }))
+    .map(d => ({ d, pct: dirChasePct(d) ?? -1 }))
     .sort((a,b) => b.pct - a.pct)[0];
+
+  // Hit zones — base hit or better per pitch direction (all zones, strike + ball)
+  // A pitch can contribute to multiple direction buckets (e.g. Z1 = High + In)
+  const hitDirs: Record<Dir, { hits: number; inPlay: number }> = {
+    High: {hits:0,inPlay:0}, Low: {hits:0,inPlay:0},
+    In:   {hits:0,inPlay:0}, Out: {hits:0,inPlay:0},
+  };
+
+  function getPitchDirs(loc: string, h: 'R' | 'L'): Dir[] {
+    const dirs: Dir[] = [];
+    const r = h === 'R';
+    const up  = loc.startsWith('B-Up')  || /^Z[123]$/.test(loc);
+    const low = loc.startsWith('B-Low') || /^Z[789]$/.test(loc);
+    const ins = loc.includes('In')  || (r ? /^Z[147]$/.test(loc) : /^Z[369]$/.test(loc));
+    const out = loc.includes('Out') || (r ? /^Z[369]$/.test(loc) : /^Z[147]$/.test(loc));
+    if (up)  dirs.push('High');
+    if (low) dirs.push('Low');
+    if (ins) dirs.push('In');
+    if (out) dirs.push('Out');
+    return dirs;
+  }
+
+  for (const p of pitches) {
+    const rawLoc  = (p.pitchLocation ?? '').trim();
+    if (!rawLoc) continue;
+    const ph      = (p.batterHand === 'L' || p.batterHand === 'R') ? p.batterHand : gridHand;
+    const loc     = normalizeLocation(rawLoc, ph);
+    const isHit   = ['single','double','triple','home-run'].includes(p.hitResult ?? '');
+    const isInPlay = p.outcome === 'in-play' || isHit;
+    if (!isInPlay) continue;
+    for (const d of getPitchDirs(loc, ph)) {
+      hitDirs[d].inPlay++;
+      if (isHit) hitDirs[d].hits++;
+    }
+  }
 
   const uniqueGames     = new Set(pitches.map(p => p.gameId).filter(Boolean)).size;
   const overallSwingPct = totalPitches > 0 ? Math.round(totalSwings / totalPitches * 100) : 0;
@@ -407,7 +443,7 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                         <>
                           <p className="text-white font-black text-[22px] leading-none">{bestChaseDir.d}</p>
                           <p className="text-amber-300 text-[13px] font-semibold mt-0.5">{bestChaseDir.pct}% chase</p>
-                          <p className="text-amber-800 text-[11px]">{dirStats[bestChaseDir.d as Dir].total} pitches</p>
+                          <p className="text-amber-800 text-[11px]">{dirChase[bestChaseDir.d as Dir].total} pitches</p>
                         </>
                       ) : <p className="text-amber-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
@@ -425,21 +461,24 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                     </div>
                   </div>
 
-                  {/* Ball zone chase rate row */}
+                  {/* Hit zones — where he does damage */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
-                    <p className="text-slate-600 text-[10px] uppercase tracking-widest mb-2 text-center">Ball Zone Chase Rates</p>
+                    <p className="text-slate-600 text-[10px] uppercase tracking-widest mb-2 text-center">Where He Does Damage (Hits)</p>
                     <div className="grid grid-cols-4 gap-0">
                       {(['High','Low','In','Out'] as Dir[]).map((dir, i) => {
-                        const pct = dirPct(dir);
-                        const hot = pct !== null && pct >= 35;
+                        const { hits, inPlay } = hitDirs[dir];
+                        const hitPct = inPlay >= 2 ? Math.round(hits / inPlay * 100) : null;
+                        const danger = hits >= 2;
                         const arrows: Record<Dir, string> = { High:'↑', Low:'↓', In:'←', Out:'→' };
                         return (
                           <div key={dir} className={`text-center ${i < 3 ? 'border-r border-slate-800' : ''}`}>
-                            <p className={`font-black text-[20px] leading-none ${hot ? 'text-orange-400' : 'text-blue-400'}`}>
-                              {pct !== null ? `${pct}%` : '—'}
+                            <p className={`font-black text-[20px] leading-none ${danger ? 'text-green-400' : 'text-slate-500'}`}>
+                              {hits > 0 ? hits : '—'}
                             </p>
                             <p className="text-slate-500 text-[11px] mt-0.5">{arrows[dir]} {dir}</p>
-                            <p className="text-slate-700 text-[10px]">{dirStats[dir].total}p</p>
+                            <p className="text-slate-700 text-[10px]">
+                              {hitPct !== null ? `${hitPct}% BA` : inPlay > 0 ? `${inPlay} AB` : '0 AB'}
+                            </p>
                           </div>
                         );
                       })}
