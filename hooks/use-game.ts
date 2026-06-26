@@ -400,17 +400,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'SET_BATTER_AT': {
       const newLineup = [...state.lineup];
-      if ((action as any).idx < newLineup.length) {
-        newLineup[(action as any).idx] = (action as any).player;
+      const subIdx = (action as any).idx as number;
+      const newPlayer = (action as any).player as Player;
+      if (subIdx < newLineup.length) {
+        newLineup[subIdx] = newPlayer;
       } else {
         // Pad with empty if needed then set
-        while (newLineup.length < (action as any).idx) {
+        while (newLineup.length < subIdx) {
           newLineup.push({ id: `empty-${newLineup.length}`, name: '', number: '' });
         }
-        newLineup.push((action as any).player);
+        newLineup.push(newPlayer);
       }
-      // Clamp to 10
-      return { ...state, lineup: newLineup.slice(0, 16) };
+      // If the sub is at the ACTIVE batting slot, update currentAtBat.playerId so
+      // the at-bat (and all pitches in it) are attributed to the substitute when
+      // it completes and lands in allAtBats. Without this, the sub's lineup card
+      // would find no at-bats because the at-bat was saved under the original
+      // batter's playerId.
+      const updatedCurrentAtBat =
+        state.currentAtBat && subIdx === state.currentBatterIndex
+          ? { ...state.currentAtBat, playerId: newPlayer.id }
+          : state.currentAtBat;
+      // Clamp to 16
+      return { ...state, lineup: newLineup.slice(0, 16), currentAtBat: updatedCurrentAtBat };
     }
 
     case 'PREV_BATTER': {
