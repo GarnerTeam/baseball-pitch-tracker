@@ -499,52 +499,47 @@ export function BatterHistoryModal({
                       </div>
 
                       {/* Grid */}
-                      <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                      <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
                         {Array.from({ length: 5 }).flatMap((_, row) =>
                           Array.from({ length: 5 }).map((_, col) => {
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
-                            const zn  = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
-                            const lbl = cellLabel(row, col, gridHand);
                             // Dominant pitch type → cell tint
                             const domPT = topTypes(s.types, 1)[0]?.[0] ?? null;
                             const cellBgColor = s.total > 0 && domPT ? (PT_BG[domPT] ?? '#0f172a') : '#0f172a';
+                            // How many pitch types to show — drives font sizing
+                            const ptEntries = topTypes(s.types, 4);
+                            const ptCount   = ptEntries.length;
+                            // Scale pitch-type font: 1 type = big, 3-4 types = smaller
+                            const ptFontSize = ptCount <= 1 ? 13 : ptCount === 2 ? 12 : 10;
 
                             return (
                               <div
                                 key={`${row}-${col}`}
-                                className="flex flex-col items-center justify-center relative select-none rounded-sm"
+                                className="flex flex-col items-center justify-center select-none rounded-sm"
                                 style={{
                                   background: cellBgColor,
-                                  aspectRatio: '1', minHeight: 58,
-                                  outline: isStrike ? '1.5px solid rgba(148,163,184,0.40)' : '1px solid rgba(255,255,255,0.05)',
+                                  aspectRatio: '1', minHeight: 62,
+                                  outline: isStrike ? '2px solid rgba(148,163,184,0.45)' : '1px solid rgba(255,255,255,0.06)',
                                 }}
                               >
-                                {/* Zone number (strike) or ball-zone label */}
-                                {zn && !isShadowCell(row, col) && (
-                                  <span className="absolute top-[2px] left-[3px] font-bold leading-none" style={{ fontSize: 9, color: 'rgba(148,163,184,0.5)' }}>{zn}</span>
-                                )}
-                                {!isStrike && lbl && !isShadowCell(row, col) && (
-                                  <span className="absolute top-[2px] inset-x-0 text-center leading-none" style={{ fontSize: 7, color: 'rgba(148,163,184,0.4)' }}>{lbl}</span>
-                                )}
-
-                                {/* Shadow cells: background tint only, no numbers */}
+                                {/* Shadow cells: tint only, no content */}
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
-                                    {/* Total pitch count */}
-                                    <span className="font-black leading-none text-white" style={{ fontSize: 20 }}>{s.total}</span>
-                                    {/* Pitch type breakdown — each type in its colour */}
-                                    <div className="flex flex-wrap items-center justify-center gap-x-[3px] gap-y-0 mt-[2px] px-0.5">
-                                      {topTypes(s.types, 4).map(([t, n]) => (
-                                        <span key={t} className="font-black leading-none" style={{ fontSize: 9, color: PT_COLOR[t] ?? '#94a3b8' }}>
-                                          {PT_LABEL[t] ?? t}·{n}
+                                    {/* Total pitch count — maximise size */}
+                                    <span className="font-black leading-none text-white" style={{ fontSize: 26 }}>{s.total}</span>
+                                    {/* Pitch types — stacked pairs for readability */}
+                                    <div className="flex flex-wrap items-center justify-center mt-[3px] px-[2px]" style={{ gap: '2px 4px' }}>
+                                      {ptEntries.map(([t, n]) => (
+                                        <span key={t} className="font-black leading-none" style={{ fontSize: ptFontSize, color: PT_COLOR[t] ?? '#94a3b8' }}>
+                                          {PT_LABEL[t] ?? t} {n}
                                         </span>
                                       ))}
                                     </div>
                                   </>
                                 ) : (
-                                  <span className="font-black" style={{ fontSize: 14, color: 'rgba(100,116,139,0.25)' }}>—</span>
+                                  <span className="font-black" style={{ fontSize: 16, color: 'rgba(100,116,139,0.2)' }}>·</span>
                                 )}
                               </div>
                             );
