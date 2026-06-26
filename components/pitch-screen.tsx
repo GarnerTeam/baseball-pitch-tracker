@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { GameState, PitchType, SwingResult, ContactType, PitchLocation, AtBat, BaseState } from '@/types';
 import { PITCH_TYPE_COLORS, PITCH_TYPE_LABELS } from '@/types';
 import { PlayerHeader } from './player-header';
@@ -212,7 +212,14 @@ export function PitchScreen({
     return ab.batterIndex === currentBatterIndex;
   }
   const batterAtBats = allAtBats.filter(ab => _matchesBatter(ab) && ab.isComplete);
-  const canUndo = (currentAtBat?.pitches?.length ?? 0) > 0;
+  const currentPlayerId = lineup[currentBatterIndex]?.id;
+  const hasPrevABPitch = state.allAtBats.some(ab =>
+    ab.pitches.length > 0 &&
+    (currentPlayerId
+      ? (ab.playerId === currentPlayerId || ab.batterIndex === currentBatterIndex)
+      : ab.batterIndex === currentBatterIndex)
+  );
+  const canUndo = (currentAtBat?.pitches?.length ?? 0) > 0 || hasPrevABPitch;
   const _rawBatter = lineup[_safeBatterIdx];
   const batter = (_rawBatter && _rawBatter.name.trim())
     ? _rawBatter
@@ -226,6 +233,19 @@ export function PitchScreen({
   const completedABs = allAtBats
     .filter(ab => _matchesBatter(ab) && ab.isComplete && ab.pitches.length > 0)
     .sort((a, b) => b.atBatNumber - a.atBatNumber);
+
+  // ── Auto-scroll to contact buttons when swing is selected ──────────────────
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (pendingPitch.swing === 'swing' && scrollContainerRef.current) {
+      // Small delay so the contact section has rendered before scrolling
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    }
+  }, [pendingPitch.swing]);
 
   // ── Auto-record wrappers with toggle support ────────────────────────────────
   const handleSetSwing = (s: SwingResult) => {
@@ -325,7 +345,7 @@ export function PitchScreen({
       </div>
 
       {/* Pitch type + contact buttons */}
-      <div className="flex-1 overflow-y-auto px-3 pb-1">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 pb-1">
         <PitchControls
           pitchType={pendingPitch.pitchType}
           swing={pendingPitch.swing}
@@ -341,11 +361,11 @@ export function PitchScreen({
       {/* Bottom row: Next Batter | ← Prev Batter | Overlay */}
       <div className="px-3 pb-3 pt-1 flex-shrink-0">
         <div className="flex gap-1.5">
-          <button onClick={onNextBatter} className="flex-1 h-9 rounded-lg text-[18px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300">
-            Next Batter ›
-          </button>
           <button onClick={onPrevBatter} className="flex-1 h-9 rounded-lg text-[18px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300">
             ‹ Prev Batter
+          </button>
+          <button onClick={onNextBatter} className="flex-1 h-9 rounded-lg text-[18px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300">
+            Next Batter ›
           </button>
           <button
             onClick={onToggleOverlay}

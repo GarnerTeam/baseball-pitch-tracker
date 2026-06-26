@@ -476,20 +476,67 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case 'UNDO_PITCH': {
-      if (!state.currentAtBat || state.currentAtBat.pitches.length === 0) return state;
-      const pitches = state.currentAtBat.pitches.slice(0, -1);
+      // ── Case 1: Current at-bat has pitches — undo last pitch ─────────────
+      if (state.currentAtBat && state.currentAtBat.pitches.length > 0) {
+        const pitches = state.currentAtBat.pitches.slice(0, -1);
+        const removed = state.currentAtBat.pitches[state.currentAtBat.pitches.length - 1];
+        const last = pitches[pitches.length - 1];
+        return {
+          ...state,
+          currentAtBat: {
+            ...state.currentAtBat,
+            pitches,
+            balls: last ? last.ballsAfter : 0,
+            strikes: last ? last.strikesAfter : 0,
+            isComplete: false,
+            result: undefined,
+            completedAt: undefined,
+          },
+          // Restore outs count to what it was before this pitch was recorded
+          outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
+          syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
+          notification: null,
+        };
+      }
+
+      // ── Case 2: Current at-bat is empty — undo last pitch from most recently ──
+      //    completed at-bat for the current batter (handles prev-batter + undo)
+      const currentPlayerId = state.lineup[state.currentBatterIndex]?.id;
+      const batterABs = state.allAtBats
+        .filter(ab =>
+          ab.pitches.length > 0 &&
+          (currentPlayerId
+            ? (ab.playerId === currentPlayerId || ab.batterIndex === state.currentBatterIndex)
+            : ab.batterIndex === state.currentBatterIndex)
+        )
+        .sort((a, b) => b.atBatNumber - a.atBatNumber);
+
+      const prevAB = batterABs[0];
+      if (!prevAB) return state; // nothing to undo
+
+      const pitches = prevAB.pitches.slice(0, -1);
+      const removed = prevAB.pitches[prevAB.pitches.length - 1];
       const last = pitches[pitches.length - 1];
-      const removedId = state.currentAtBat.pitches[state.currentAtBat.pitches.length - 1].id;
+
+      const restoredAB: AtBat = {
+        ...prevAB,
+        pitches,
+        balls: last ? last.ballsAfter : 0,
+        strikes: last ? last.strikesAfter : 0,
+        isComplete: false,
+        result: undefined,
+        completedAt: undefined,
+      };
+
       return {
         ...state,
-        currentAtBat: {
-          ...state.currentAtBat,
-          pitches,
-          balls: last ? last.ballsAfter : 0,
-          strikes: last ? last.strikesAfter : 0,
-        },
-        syncQueue: state.syncQueue.filter(p => p.id !== removedId),
+        currentAtBat: restoredAB,
+        currentBatterIndex: prevAB.batterIndex,
+        allAtBats: state.allAtBats.filter(ab => ab.id !== prevAB.id),
+        outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
+        syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
         notification: null,
+        phase: 'pitching',
       };
     }
 
