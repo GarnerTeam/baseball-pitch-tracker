@@ -231,17 +231,30 @@ export function BatterHistoryModal({
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
       const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0 };
+      const misses = s.swings - s.contacts;
       return {
         zone: z, name: ZONE_NAMES[z], ...s,
-        swingPct: s.total  >= 2 ? Math.round(s.swings   / s.total  * 100) : -1,
-        missPct:  s.swings >= 2 ? Math.round((s.swings - s.contacts) / s.swings * 100) : -1,
+        swingPct:    s.total  >= 2 ? Math.round(s.swings   / s.total   * 100) : -1,
+        missPct:     s.swings >= 2 ? Math.round(misses      / s.swings  * 100) : -1,
+        // whiffRate = misses per pitch thrown — best "pitch here" signal
+        whiffRate:   s.total  >= 2 ? Math.round(misses      / s.total   * 100) : -1,
+        // contactRate = contacts per pitch thrown — "danger zone" signal
+        contactRate: s.total  >= 2 ? Math.round(s.contacts / s.total   * 100) : -1,
       };
     });
 
-  const zonesWithData  = rankedZones.filter(z => z.swingPct >= 0);
-  const hotZone  = [...zonesWithData].sort((a,b) => b.swingPct - a.swingPct)[0];
-  const coldZone = [...zonesWithData].sort((a,b) => a.swingPct - b.swingPct)[0];
-  const kZone    = rankedZones.filter(z => z.missPct >= 0).sort((a,b) => b.missPct - a.missPct)[0];
+  const zonesWithData = rankedZones.filter(z => z.swingPct >= 0);
+  // Pitch Here = best whiff rate (batter swings AND misses most often per pitch)
+  const pitchHereZone = [...zonesWithData].filter(z => z.whiffRate >= 0)
+    .sort((a, b) => b.whiffRate - a.whiffRate)[0];
+  // K-Zone = highest miss% among swings (pure whiff pitch)
+  const kZone = rankedZones.filter(z => z.missPct >= 0)
+    .sort((a, b) => b.missPct - a.missPct)[0];
+  // Danger Zone = highest contact rate (batter makes contact here most)
+  const dangerZone = [...zonesWithData].filter(z => z.contactRate >= 0)
+    .sort((a, b) => b.contactRate - a.contactRate)[0];
+  // Takes = lowest swing% (batter is most patient here)
+  const takesZone = [...zonesWithData].sort((a, b) => a.swingPct - b.swingPct)[0];
 
   // ── Ball-zone directional chase ───────────────────────────────────────────
   type Dir = 'High' | 'Low' | 'In' | 'Out';
@@ -486,52 +499,52 @@ export function BatterHistoryModal({
                   {/* 4 action cards */}
                   <div className="grid grid-cols-2 gap-2 mb-2">
 
-                    {/* Pitch Here */}
-                    <div className="rounded-xl p-3 border" style={{ background: '#0a2a12', borderColor: '#166534' }}>
+                    {/* Pitch Here — highest whiff rate: batter swings AND misses most */}
+                    <div className="rounded-xl p-3 border" style={{ background: '#071a0f', borderColor: '#15803d' }}>
                       <p className="text-green-400 text-[11px] font-bold uppercase tracking-wide mb-1">🎯 Pitch Here</p>
-                      {hotZone ? (
+                      {pitchHereZone ? (
                         <>
-                          <p className="text-white font-black text-[22px] leading-none">{hotZone.name}</p>
-                          <p className="text-green-300 text-[13px] font-semibold mt-0.5">{hotZone.swingPct}% swing</p>
-                          <p className="text-green-800 text-[11px]">{hotZone.total} pitches</p>
+                          <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
+                          <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff</p>
+                          <p style={{ color: '#166534' }} className="text-[11px]">{pitchHereZone.swingPct}% swing · {pitchHereZone.total} pitches</p>
                         </>
                       ) : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
 
-                    {/* K-Zone */}
-                    <div className="rounded-xl p-3 border" style={{ background: '#1a0a2e', borderColor: '#4a1d8a' }}>
-                      <p className="text-purple-400 text-[11px] font-bold uppercase tracking-wide mb-1">⚡ K-Zone</p>
+                    {/* K-Zone — highest miss% per swing: best strikeout pitch */}
+                    <div className="rounded-xl p-3 border" style={{ background: '#0f0a1e', borderColor: '#5b21b6' }}>
+                      <p className="text-violet-400 text-[11px] font-bold uppercase tracking-wide mb-1">⚡ K-Zone</p>
                       {kZone ? (
                         <>
                           <p className="text-white font-black text-[22px] leading-none">{kZone.name}</p>
-                          <p className="text-purple-300 text-[13px] font-semibold mt-0.5">{kZone.missPct}% miss</p>
-                          <p className="text-purple-800 text-[11px]">{kZone.swings} swings</p>
+                          <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kZone.missPct}% miss/swing</p>
+                          <p style={{ color: '#3730a3' }} className="text-[11px]">{kZone.swings} swings · {kZone.total} pitches</p>
                         </>
-                      ) : <p className="text-purple-900 text-[13px] mt-1">Not enough swings</p>}
+                      ) : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
                     </div>
 
-                    {/* Chase bait */}
-                    <div className="rounded-xl p-3 border" style={{ background: '#1c1000', borderColor: '#78350f' }}>
+                    {/* Chase Bait — ball zone he chases most */}
+                    <div className="rounded-xl p-3 border" style={{ background: '#1c1000', borderColor: '#b45309' }}>
                       <p className="text-amber-400 text-[11px] font-bold uppercase tracking-wide mb-1">🎣 Chase Bait</p>
                       {bestChaseDir && bestChaseDir.pct > 0 ? (
                         <>
                           <p className="text-white font-black text-[22px] leading-none">{bestChaseDir.d}</p>
                           <p className="text-amber-300 text-[13px] font-semibold mt-0.5">{bestChaseDir.pct}% chase</p>
-                          <p className="text-amber-800 text-[11px]">{dirChase[bestChaseDir.d as Dir].total} pitches</p>
+                          <p style={{ color: '#78350f' }} className="text-[11px]">{dirChase[bestChaseDir.d as Dir].total} ball pitches</p>
                         </>
                       ) : <p className="text-amber-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
 
-                    {/* Takes */}
-                    <div className="rounded-xl p-3 border" style={{ background: '#0c1a2e', borderColor: '#1e3a5f' }}>
-                      <p className="text-blue-400 text-[11px] font-bold uppercase tracking-wide mb-1">👁 Takes</p>
-                      {coldZone ? (
+                    {/* Danger Zone — highest contact rate: DO NOT THROW HERE */}
+                    <div className="rounded-xl p-3 border" style={{ background: '#1c0505', borderColor: '#b91c1c' }}>
+                      <p className="text-red-400 text-[11px] font-bold uppercase tracking-wide mb-1">🚨 Danger Zone</p>
+                      {dangerZone ? (
                         <>
-                          <p className="text-white font-black text-[22px] leading-none">{coldZone.name}</p>
-                          <p className="text-blue-300 text-[13px] font-semibold mt-0.5">{coldZone.swingPct}% swing</p>
-                          <p className="text-blue-800 text-[11px]">{coldZone.total} pitches</p>
+                          <p className="text-white font-black text-[22px] leading-none">{dangerZone.name}</p>
+                          <p className="text-red-300 text-[13px] font-semibold mt-0.5">{dangerZone.contactRate}% contact</p>
+                          <p style={{ color: '#7f1d1d' }} className="text-[11px]">{dangerZone.contacts} hits/fouls · {dangerZone.total} pitches</p>
                         </>
-                      ) : <p className="text-blue-900 text-[13px] mt-1">Not enough data</p>}
+                      ) : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
                   </div>
 
