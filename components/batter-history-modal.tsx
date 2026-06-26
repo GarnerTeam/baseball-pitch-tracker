@@ -271,16 +271,47 @@ export function BatterHistoryModal({
     });
 
   const zonesWithData = rankedZones.filter(z => z.swingPct >= 0);
-  // Pitch Here = best whiff rate (batter swings AND misses most often per pitch)
-  const pitchHereZone = [...zonesWithData].filter(z => z.whiffRate >= 0)
-    .sort((a, b) => b.whiffRate - a.whiffRate)[0];
-  // K-Zone = highest miss% among swings (pure whiff pitch)
-  const kZone = rankedZones.filter(z => z.missPct >= 0)
-    .sort((a, b) => b.missPct - a.missPct)[0];
-  // Danger Zone = highest contact rate (batter makes contact here most)
-  const dangerZone = [...zonesWithData].filter(z => z.contactRate >= 0)
-    .sort((a, b) => b.contactRate - a.contactRate)[0];
-  // Takes = lowest swing% (batter is most patient here)
+
+  // ── Pitch Here ─────────────────────────────────────────────────────────────
+  // Best whiff rate (misses / total pitches). Min 2 pitches.
+  const pitchHereZone = [...zonesWithData]
+    .filter(z => z.whiffRate >= 0)
+    .sort((a, b) => b.whiffRate - a.whiffRate)[0] ?? null;
+
+  // ── K-Zone: "What PITCH TYPE gets him out?" ────────────────────────────────
+  // Aggregate whiff counts by pitch type across ALL zones — this is a different
+  // dimension from Pitch Here (which answers WHERE), so the two can never clash.
+  const kPitchWhiffs: Record<string, number> = {};
+  const kPitchSwings: Record<string, number> = {};
+  for (const stat of Object.values(locStats)) {
+    for (const [pt, n] of Object.entries(stat.typeMisses ?? {}))
+      kPitchWhiffs[pt] = (kPitchWhiffs[pt] ?? 0) + n;
+    for (const [pt, n] of Object.entries(stat.typeSwings ?? {}))
+      kPitchSwings[pt] = (kPitchSwings[pt] ?? 0) + n;
+  }
+  const kPitchTop = topTypes(kPitchWhiffs, 1)[0] ?? null; // [pitchType, whiffCount]
+  const kPitchMissPct = kPitchTop
+    ? Math.round((kPitchTop[1] / (kPitchSwings[kPitchTop[0]] ?? 1)) * 100)
+    : null;
+  // Also find best zone for this pitch type (where it gets the most whiffs)
+  const kPitchBestZone = kPitchTop
+    ? Object.entries(locStats)
+        .filter(([k]) => Object.keys(ZONE_NAMES).includes(k))
+        .sort((a, b) => (b[1].typeMisses?.[kPitchTop[0]] ?? 0) - (a[1].typeMisses?.[kPitchTop[0]] ?? 0))[0]?.[0]
+    : null;
+
+  // ── Danger Zone ─────────────────────────────────────────────────────────────
+  // Highest contact rate. Prefer a DIFFERENT zone than Pitch Here — only fall
+  // back to the same zone if no other zone has contact data.
+  const dangerCandidates = [...zonesWithData]
+    .filter(z => z.contactRate >= 0 && z.contacts >= 1)
+    .sort((a, b) => b.contactRate - a.contactRate);
+  const dangerZone =
+    dangerCandidates.find(z => z.zone !== pitchHereZone?.zone) ??
+    dangerCandidates[0] ??
+    null;
+
+  // Takes = lowest swing% (kept for internal reference; not shown as its own card)
   const takesZone = [...zonesWithData].sort((a, b) => a.swingPct - b.swingPct)[0];
 
   // ── Ball-zone directional chase ───────────────────────────────────────────
@@ -547,20 +578,19 @@ export function BatterHistoryModal({
                       })() : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
 
-                    {/* K-Zone — highest miss% per swing: best strikeout pitch */}
+                    {/* K-Zone — WHAT PITCH gets him out? (pitch-type whiff leader) */}
                     <div className="rounded-xl p-3 border" style={{ background: '#0f0a1e', borderColor: '#5b21b6' }}>
-                      <p className="text-violet-400 text-[11px] font-bold uppercase tracking-wide mb-1">⚡ K-Zone</p>
-                      {kZone ? (() => {
-                        const bp = bestPitch(locStats[kZone.zone]?.typeMisses ?? {});
-                        return (
-                          <>
-                            <p className="text-white font-black text-[22px] leading-none">{kZone.name}</p>
-                            <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kZone.missPct}% miss/swing</p>
-                            {bp && <p className="text-violet-400 text-[11px] font-bold mt-0.5">Best: {bp}</p>}
-                            <p style={{ color: '#3730a3' }} className="text-[10px] mt-0.5">{kZone.swings} swings · {kZone.total} pitches</p>
-                          </>
-                        );
-                      })() : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
+                      <p className="text-violet-400 text-[11px] font-bold uppercase tracking-wide mb-1">⚡ K-Pitch</p>
+                      {kPitchTop ? (
+                        <>
+                          <p className="text-white font-black text-[28px] leading-none">{kPitchTop[0]}</p>
+                          <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kPitchTop[1]} whiffs · {kPitchMissPct}% miss/sw</p>
+                          {kPitchBestZone && ZONE_NAMES[kPitchBestZone] && (
+                            <p className="text-violet-500 text-[11px] mt-0.5">Best spot: {ZONE_NAMES[kPitchBestZone]}</p>
+                          )}
+                          <p style={{ color: '#3730a3' }} className="text-[10px] mt-0.5">{kPitchSwings[kPitchTop[0]] ?? 0} swings total</p>
+                        </>
+                      ) : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
                     </div>
 
                     {/* Chase Bait — ball zone he chases most */}
