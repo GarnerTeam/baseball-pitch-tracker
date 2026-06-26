@@ -20,7 +20,12 @@ interface PitchRow {
   atBatNumber?: number | string;
 }
 
-interface CellStat { total: number; swings: number; contacts: number }
+interface CellStat {
+  total: number; swings: number; contacts: number;
+  types:      Record<string, number>;
+  typeSwings: Record<string, number>;
+  typeMisses: Record<string, number>;
+}
 
 // ── Zone names ────────────────────────────────────────────────────────────────
 const ZONE_NAMES: Record<string, string> = {
@@ -40,6 +45,17 @@ function swingBg(pct: number, total: number): string {
 }
 function textColor(bg: string): string {
   return bg === '#1e293b' ? '#475569' : bg === '#1e3a8a' ? '#93c5fd' : '#ffffff';
+}
+
+/** Sort a pitchType→count map descending and return top N as [type, count] pairs. */
+function topTypes(map: Record<string, number>, n = 2): [string, number][] {
+  return Object.entries(map ?? {}).sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+/** Best pitch type label from a miss-count map: e.g. "SL ×4" */
+function bestPitch(map: Record<string, number>): string | null {
+  const top = topTypes(map, 1);
+  return top.length > 0 ? `${top[0][0]} ×${top[0][1]}` : null;
 }
 
 // ── Location normalizer ───────────────────────────────────────────────────────
@@ -209,7 +225,7 @@ export function BatterHistoryModal({
 
   // ── Build per-location stats (normalize Left/Right → In/Out) ──────────────
   const locStats: Record<string, CellStat> = {};
-  let totalPitches = 0, totalSwings = 0, ballPitches = 0, ballSwings = 0;
+  let totalPitches = 0, totalSwings = 0, ballPitches = 0, ballSwings = 0, inPlayCount = 0;
 
   for (const p of pitches) {
     const rawLoc = (p.pitchLocation ?? '').trim();
@@ -217,7 +233,7 @@ export function BatterHistoryModal({
     const pitchHand = (p.batterHand === 'L' || p.batterHand === 'R') ? p.batterHand : gridHand;
     const loc = normalizeLocation(rawLoc, pitchHand);
 
-    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0 };
+    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, types: {}, typeSwings: {}, typeMisses: {} };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
     locStats[loc].total++;
@@ -230,7 +246,7 @@ export function BatterHistoryModal({
   // ── Quick-read (strike zone only, min 2 pitches) ──────────────────────────
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
-      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0 };
+      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, types: {}, typeSwings: {}, typeMisses: {} };
       const misses = s.swings - s.contacts;
       return {
         zone: z, name: ZONE_NAMES[z], ...s,
@@ -322,8 +338,9 @@ export function BatterHistoryModal({
   }
 
   const uniqueGames     = new Set(pitches.map(p => p.gameId).filter(Boolean)).size;
-  const overallSwingPct = totalPitches > 0 ? Math.round(totalSwings / totalPitches * 100) : 0;
-  const chaseRate       = ballPitches  > 0 ? Math.round(ballSwings  / ballPitches  * 100) : 0;
+  const overallSwingPct = totalPitches > 0 ? Math.round(totalSwings  / totalPitches * 100) : 0;
+  const chaseRate       = ballPitches  > 0 ? Math.round(ballSwings   / ballPitches  * 100) : 0;
+  const inPlayPct       = totalPitches > 0 ? Math.round(inPlayCount  / totalPitches * 100) : 0;
 
   // ── Spray hits ─────────────────────────────────────────────────────────────
   const hits = pitches.filter(p =>
@@ -381,15 +398,16 @@ export function BatterHistoryModal({
           <div className="pb-8 space-y-4">
 
             {/* Stats strip */}
-            <div className="grid grid-cols-3 gap-0 border-b border-slate-800">
+            <div className="grid grid-cols-4 gap-0 border-b border-slate-800">
               {[
-                { label: 'Swing%',  value: `${overallSwingPct}%` },
-                { label: 'Chase%',  value: `${chaseRate}%` },
-                { label: 'Pitches', value: totalPitches },
+                { label: 'Swing%',    value: `${overallSwingPct}%` },
+                { label: 'Chase%',    value: `${chaseRate}%` },
+                { label: 'In Play%',  value: `${inPlayPct}%` },
+                { label: 'Pitches',   value: totalPitches },
               ].map(({ label, value }) => (
                 <div key={label} className="py-3 text-center border-r border-slate-800 last:border-r-0">
-                  <p className="text-white font-black text-[22px] leading-none">{value}</p>
-                  <p className="text-slate-500 text-[12px] mt-0.5 uppercase tracking-wide">{label}</p>
+                  <p className="text-white font-black text-[20px] leading-none">{value}</p>
+                  <p className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wide">{label}</p>
                 </div>
               ))}
             </div>
@@ -429,7 +447,7 @@ export function BatterHistoryModal({
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const zn  = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
                             const key = cellLocKey(row, col, gridHand);
-                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0 }) : { total:0, swings:0, contacts:0 };
+                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
                             const swPct = s.total > 0 ? Math.round(s.swings / s.total * 100) : null;
                             const bg  = swingBg(swPct ?? 0, s.total);
                             const fg  = textColor(bg);
@@ -452,8 +470,12 @@ export function BatterHistoryModal({
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
                                     <span className="font-black leading-none" style={{ fontSize: 20 }}>{s.total}</span>
-                                    <span className="font-bold leading-none mt-[2px]" style={{ fontSize: 13 }}>
-                                      {swPct !== null ? `${swPct}%` : '—'}
+                                    <span className="font-bold leading-none mt-[1px]" style={{ fontSize: 11 }}>
+                                      {swPct !== null ? `${swPct}%sw` : '—'}
+                                    </span>
+                                    {/* Pitch type breakdown */}
+                                    <span className="leading-none mt-[1px] text-center px-0.5" style={{ fontSize: 7, opacity: 0.8, letterSpacing: '0.01em' }}>
+                                      {topTypes(s.types, 3).map(([t, n]) => `${t}·${n}`).join(' ')}
                                     </span>
                                   </>
                                 ) : (
@@ -502,25 +524,33 @@ export function BatterHistoryModal({
                     {/* Pitch Here — highest whiff rate: batter swings AND misses most */}
                     <div className="rounded-xl p-3 border" style={{ background: '#071a0f', borderColor: '#15803d' }}>
                       <p className="text-green-400 text-[11px] font-bold uppercase tracking-wide mb-1">🎯 Pitch Here</p>
-                      {pitchHereZone ? (
-                        <>
-                          <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
-                          <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff</p>
-                          <p style={{ color: '#166534' }} className="text-[11px]">{pitchHereZone.swingPct}% swing · {pitchHereZone.total} pitches</p>
-                        </>
-                      ) : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
+                      {pitchHereZone ? (() => {
+                        const bp = bestPitch(locStats[pitchHereZone.zone]?.typeMisses ?? {});
+                        return (
+                          <>
+                            <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
+                            <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff · {pitchHereZone.swingPct}% sw</p>
+                            {bp && <p className="text-green-500 text-[11px] font-bold mt-0.5">Best: {bp}</p>}
+                            <p style={{ color: '#166534' }} className="text-[10px] mt-0.5">{pitchHereZone.total} pitches</p>
+                          </>
+                        );
+                      })() : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
 
                     {/* K-Zone — highest miss% per swing: best strikeout pitch */}
                     <div className="rounded-xl p-3 border" style={{ background: '#0f0a1e', borderColor: '#5b21b6' }}>
                       <p className="text-violet-400 text-[11px] font-bold uppercase tracking-wide mb-1">⚡ K-Zone</p>
-                      {kZone ? (
-                        <>
-                          <p className="text-white font-black text-[22px] leading-none">{kZone.name}</p>
-                          <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kZone.missPct}% miss/swing</p>
-                          <p style={{ color: '#3730a3' }} className="text-[11px]">{kZone.swings} swings · {kZone.total} pitches</p>
-                        </>
-                      ) : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
+                      {kZone ? (() => {
+                        const bp = bestPitch(locStats[kZone.zone]?.typeMisses ?? {});
+                        return (
+                          <>
+                            <p className="text-white font-black text-[22px] leading-none">{kZone.name}</p>
+                            <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kZone.missPct}% miss/swing</p>
+                            {bp && <p className="text-violet-400 text-[11px] font-bold mt-0.5">Best: {bp}</p>}
+                            <p style={{ color: '#3730a3' }} className="text-[10px] mt-0.5">{kZone.swings} swings · {kZone.total} pitches</p>
+                          </>
+                        );
+                      })() : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
                     </div>
 
                     {/* Chase Bait — ball zone he chases most */}
@@ -538,38 +568,58 @@ export function BatterHistoryModal({
                     {/* Danger Zone — highest contact rate: DO NOT THROW HERE */}
                     <div className="rounded-xl p-3 border" style={{ background: '#1c0505', borderColor: '#b91c1c' }}>
                       <p className="text-red-400 text-[11px] font-bold uppercase tracking-wide mb-1">🚨 Danger Zone</p>
-                      {dangerZone ? (
-                        <>
-                          <p className="text-white font-black text-[22px] leading-none">{dangerZone.name}</p>
-                          <p className="text-red-300 text-[13px] font-semibold mt-0.5">{dangerZone.contactRate}% contact</p>
-                          <p style={{ color: '#7f1d1d' }} className="text-[11px]">{dangerZone.contacts} hits/fouls · {dangerZone.total} pitches</p>
-                        </>
-                      ) : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
+                      {dangerZone ? (() => {
+                        const bp = bestPitch(locStats[dangerZone.zone]?.typeSwings ?? {});
+                        return (
+                          <>
+                            <p className="text-white font-black text-[22px] leading-none">{dangerZone.name}</p>
+                            <p className="text-red-300 text-[13px] font-semibold mt-0.5">{dangerZone.contactRate}% contact</p>
+                            {bp && <p className="text-red-500 text-[11px] font-bold mt-0.5">Avoid: {bp}</p>}
+                            <p style={{ color: '#7f1d1d' }} className="text-[10px] mt-0.5">{dangerZone.contacts} contacts · {dangerZone.total} pitches</p>
+                          </>
+                        );
+                      })() : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
                   </div>
 
-                  {/* Hit zones — where he does damage */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
-                    <p className="text-slate-600 text-[10px] uppercase tracking-widest mb-2 text-center">Where He Does Damage (Hits)</p>
-                    <div className="grid grid-cols-4 gap-0">
-                      {(['High','Low','In','Out'] as Dir[]).map((dir, i) => {
+                  {/* Where He Does Damage — 2×2 card grid */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
+                    <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2.5 text-center">Where He Does Damage</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['High','Low','In','Out'] as Dir[]).map(dir => {
                         const { hits, inPlay } = hitDirs[dir];
                         const hitPct = inPlay >= 2 ? Math.round(hits / inPlay * 100) : null;
-                        const danger = hits >= 2;
-                        const arrows: Record<Dir, string> = { High:'↑', Low:'↓', In:'←', Out:'→' };
+                        const hot = hits >= 2;
+                        const arrows: Record<Dir, string> = { High:'↑', Low:'↓', In:'◀', Out:'▶' };
                         return (
-                          <div key={dir} className={`text-center ${i < 3 ? 'border-r border-slate-800' : ''}`}>
-                            <p className={`font-black text-[20px] leading-none ${danger ? 'text-green-400' : 'text-slate-500'}`}>
-                              {hits > 0 ? hits : '—'}
+                          <div
+                            key={dir}
+                            className="rounded-xl p-3 border text-center"
+                            style={{
+                              background:   hot ? '#1c0505' : '#0f172a',
+                              borderColor:  hot ? '#b91c1c' : '#1e293b',
+                            }}
+                          >
+                            <p className="font-bold text-[11px] uppercase tracking-wide mb-1"
+                               style={{ color: hot ? '#f87171' : '#475569' }}>
+                              {arrows[dir]} {dir}
                             </p>
-                            <p className="text-slate-500 text-[11px] mt-0.5">{arrows[dir]} {dir}</p>
-                            <p className="text-slate-700 text-[10px]">
-                              {hitPct !== null ? `${hitPct}% BA` : inPlay > 0 ? `${inPlay} AB` : '0 AB'}
+                            <p className="font-black leading-none"
+                               style={{ fontSize: 36, color: hot ? '#fca5a5' : '#334155' }}>
+                              {hits}
+                            </p>
+                            <p className="font-semibold mt-1" style={{ fontSize: 12, color: hot ? '#ef4444' : '#334155' }}>
+                              {hitPct !== null
+                                ? `${hitPct}% BA`
+                                : inPlay > 0
+                                  ? `${inPlay} AB · 0 H`
+                                  : 'No AB'}
                             </p>
                           </div>
                         );
                       })}
                     </div>
+                    <p className="text-slate-700 text-[10px] text-center mt-2">base hits or better · red = 2+ hits</p>
                   </div>
                 </div>
 
