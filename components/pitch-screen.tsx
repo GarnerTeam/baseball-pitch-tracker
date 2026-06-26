@@ -25,6 +25,7 @@ interface PitchScreenProps {
   onSetBatterHand: (h: 'L' | 'R' | null) => void;
   onTabChange: (tab: GameState['activeTab']) => void;
   onSetBase: (base: keyof BaseState, occupied: boolean) => void;
+  onSetOuts: (count: 0 | 1 | 2) => void;
 }
 
 const OVERLAY_FILTERS: (PitchType | 'all')[] = ['all', 'FB', 'CB', 'SL', 'CH'];
@@ -119,11 +120,12 @@ function getBallLabel(row: number, col: number, hand?: 'L' | 'R' | null): string
 
 // ── Base State Diamond ────────────────────────────────────────────────────────
 function BaseDiamond({
-  baseState, outsCount, onSetBase,
+  baseState, outsCount, onSetBase, onSetOuts,
 }: {
   baseState: BaseState;
   outsCount: 0 | 1 | 2;
   onSetBase: (base: keyof BaseState, occupied: boolean) => void;
+  onSetOuts: (count: 0 | 1 | 2) => void;
 }) {
   const baseBtn = (key: keyof BaseState, active: boolean) => (
     <button
@@ -133,6 +135,19 @@ function BaseDiamond({
       }`}
     />
   );
+
+  // Tap a filled dot → remove that out (set count = n)
+  // Tap an empty dot → add up to that out (set count = n + 1)
+  const handleOutDot = (n: number) => {
+    if (n < outsCount) {
+      // Tapping a filled dot removes it — set outs to this index
+      onSetOuts(n as 0 | 1 | 2);
+    } else {
+      // Tapping an empty dot fills up to here
+      onSetOuts((n + 1) as 0 | 1 | 2);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-slate-800">
       <div className="flex items-center gap-3">
@@ -148,13 +163,15 @@ function BaseDiamond({
         <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Outs</span>
         <div className="flex gap-1.5 items-center">
           {[0, 1, 2].map(n => (
-            <div
+            <button
               key={n}
-              className={`w-4 h-4 rounded-full border-2 transition-colors ${
+              onClick={() => handleOutDot(n)}
+              className={`w-5 h-5 rounded-full border-2 transition-colors active:scale-90 ${
                 n < outsCount
                   ? 'bg-red-600 border-red-600'
                   : 'bg-transparent border-slate-500'
               }`}
+              aria-label={n < outsCount ? `Remove out ${n + 1}` : `Add out ${n + 1}`}
             />
           ))}
         </div>
@@ -170,7 +187,7 @@ export function PitchScreen({
   state, onSetPitchType, onSetLocation, onSetSwing, onSetContact, onRecordPitch,
   onNextBatter, onPrevBatter, onUndoPitch, onToggleOverlay, onSetOverlayFilter, onSetBatterHand,
   onTabChange,
-  onSetBase,
+  onSetBase, onSetOuts,
 }: PitchScreenProps) {
   const { currentAtBat, pendingPitch, overlayEnabled, overlayFilter, lineup, currentBatterIndex, pitcher, allAtBats, batterHand } = state;
   const balls   = currentAtBat?.balls ?? 0;
@@ -240,6 +257,7 @@ export function PitchScreen({
         baseState={state.baseState}
         outsCount={state.outsCount}
         onSetBase={onSetBase}
+        onSetOuts={onSetOuts}
       />
       <PlayerHeader
         pitcher={pitcher}

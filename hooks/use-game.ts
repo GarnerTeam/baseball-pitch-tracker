@@ -73,6 +73,7 @@ function createInitialState(): GameState {
 type GameAction =
   | { type: 'START_GAME'; homeTeam: string; visitingTeam: string }
   | { type: 'SET_BASE'; base: keyof BaseState; occupied: boolean }
+  | { type: 'SET_OUTS'; count: 0 | 1 | 2 }
   | { type: 'SET_PITCH_TYPE'; pitchType: PitchType }
   | { type: 'SET_LOCATION'; location: PitchLocation }
   | { type: 'SET_SWING'; swing: SwingResult | null }
@@ -506,6 +507,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_BASE':
       return { ...state, baseState: { ...state.baseState, [action.base]: action.occupied } };
 
+    case 'SET_OUTS':
+      return { ...state, outsCount: action.count };
 
     default:
       return state;
@@ -623,6 +626,8 @@ export function useGame() {
         dispatch({ type: 'SET_TAB', tab }), []),
       setBase: useCallback((base: keyof BaseState, occupied: boolean) =>
         dispatch({ type: 'SET_BASE', base, occupied }), []),
+      setOuts: useCallback((count: 0 | 1 | 2) =>
+        dispatch({ type: 'SET_OUTS', count }), []),
       setSheetsUrl: useCallback((url: string) =>
         dispatch({ type: 'SET_SHEETS_URL', url }), []),
       undoPitch: useCallback(() => dispatch({ type: 'UNDO_PITCH' }), []),
