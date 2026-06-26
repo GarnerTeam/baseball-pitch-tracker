@@ -152,15 +152,30 @@ interface Props {
   playerName: string;
   playerNumber: string;
   webhookUrl: string;
+  /** The current game's ID — rows with this gameId are stripped from the API
+   *  result so today's pitches come exclusively from currentGamePitches. */
+  currentGameId?: string;
+  /** Live pitches for this batter from the current game (app state, not sheet). */
+  currentGamePitches?: PitchRow[];
   onClose: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClose }: Props) {
+export function BatterHistoryModal({
+  playerName, playerNumber, webhookUrl,
+  currentGameId, currentGamePitches = [],
+  onClose,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [pitches, setPitches] = useState<PitchRow[]>([]);
+  // histPitches = historical rows from the sheet (today's gameId excluded)
+  const [histPitches, setHistPitches] = useState<PitchRow[]>([]);
   const [view, setView] = useState<'heatmap' | 'spray'>('heatmap');
+
+  // ── Merge historical + current-game pitches ───────────────────────────────
+  // currentGamePitches come from app state (always fresh); histPitches come from
+  // the sheet with today's gameId stripped out — so no duplicates.
+  const pitches: PitchRow[] = [...histPitches, ...currentGamePitches];
 
   useEffect(() => {
     if (!webhookUrl) {
@@ -173,7 +188,12 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
       .then(r => r.json())
       .then(d => {
         if (d.error) throw new Error(d.error);
-        setPitches(d.pitches ?? []);
+        const allFromSheet: PitchRow[] = d.pitches ?? [];
+        // Exclude today's game — those rows come from currentGamePitches prop
+        const hist = currentGameId
+          ? allFromSheet.filter(p => p.gameId !== currentGameId)
+          : allFromSheet;
+        setHistPitches(hist);
       })
       .catch(e => setFetchError(String(e.message ?? e)))
       .finally(() => setLoading(false));

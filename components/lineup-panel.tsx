@@ -4,6 +4,7 @@ import { GameState, Player, AtBat, PitchRecord } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
+import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
 
 interface SyncStatus {
   ok: boolean;
@@ -342,7 +343,12 @@ export function LineupPanel({
 
   // ── Slot state ────────────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState<{ idx: number; view: 'details' | 'edit' | 'edit-existing' } | null>(null);
-  const [historyPlayer, setHistoryPlayer] = useState<{ name: string; number: string } | null>(null);
+  const [historyPlayer, setHistoryPlayer] = useState<{
+    name: string;
+    number: string;
+    currentGameId: string;
+    currentGamePitches: PitchRowLite[];
+  } | null>(null);
   const [slotForm, setSlotForm] = useState({ name: '', num: '' });
   const [extraSlots, setExtraSlots] = useState(0);
 
@@ -702,7 +708,25 @@ export function LineupPanel({
                       {/* Full history button — opens heat map + spray chart from all games */}
                       {state.sheetsWebhookUrl && (
                         <button
-                          onClick={() => setHistoryPlayer({ name: player!.name, number: player!.number })}
+                          onClick={() => {
+                            const gameId = state.id;
+                            const allPitches: PitchRecord[] = [
+                              ...allAtBats.flatMap((ab: AtBat) => ab.pitches),
+                              ...(currentAtBat?.pitches ?? []),
+                            ];
+                            const bPitches = allPitches
+                              .filter(p =>
+                                p.batterName === player!.name &&
+                                p.batterNumber === player!.number
+                              )
+                              .map(toPitchRowLite);
+                            setHistoryPlayer({
+                              name:               player!.name,
+                              number:             player!.number,
+                              currentGameId:      gameId,
+                              currentGamePitches: bPitches,
+                            });
+                          }}
                           className="w-full py-2.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-[18px] font-semibold flex items-center justify-center gap-2"
                         >
                           📊 Full History &amp; Tendencies
@@ -819,6 +843,8 @@ export function LineupPanel({
           playerName={historyPlayer.name}
           playerNumber={historyPlayer.number}
           webhookUrl={state.sheetsWebhookUrl}
+          currentGameId={historyPlayer.currentGameId}
+          currentGamePitches={historyPlayer.currentGamePitches}
           onClose={() => setHistoryPlayer(null)}
         />
       )}

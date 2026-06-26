@@ -126,3 +126,49 @@ export async function syncQueueToSheets(
 }
 
 export const DEFAULT_WEBHOOK_URL = process.env.NEXT_PUBLIC_SHEETS_WEBHOOK_URL ?? '';
+
+// ── Game-state → PitchRow converter ──────────────────────────────────────────
+
+/** Minimal shape matching BatterHistoryModal's PitchRow (all optional). */
+export interface PitchRowLite {
+  gameId?: string;
+  timestamp?: string;
+  batterName?: string;
+  batterNumber?: string;
+  batterHand?: string;
+  pitchType?: string;
+  pitchZone?: string;
+  pitchLocation?: string;
+  action?: string;
+  outcome?: string;
+  hitResult?: string;
+  hitType?: string;
+  hitX?: number | string;
+  hitY?: number | string;
+  atBatNumber?: number | string;
+}
+
+/**
+ * Convert a game-state PitchRecord into the flat shape expected by
+ * BatterHistoryModal (same field names as the Google Sheets API response).
+ */
+export function toPitchRowLite(p: PitchRecord): PitchRowLite {
+  const f = flattenPitch(p);
+  return {
+    gameId:        f.gameId,
+    timestamp:     f.timestamp,
+    batterName:    f.batterName,
+    batterNumber:  f.batterNumber,
+    batterHand:    f.batterHand   || undefined,
+    pitchType:     f.pitchType,
+    pitchZone:     f.pitchZone,
+    pitchLocation: f.pitchLocation,
+    action:        f.action,
+    outcome:       f.outcome,
+    hitResult:     f.hitResult    || undefined,
+    hitType:       f.hitType      || undefined,
+    hitX:          f.hitX  !== '' ? f.hitX  : undefined,
+    hitY:          f.hitY  !== '' ? f.hitY  : undefined,
+    atBatNumber:   f.atBatNumber,
+  };
+}
