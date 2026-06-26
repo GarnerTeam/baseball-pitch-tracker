@@ -515,7 +515,7 @@ export function BatterHistoryModal({
                             // Pitch type entries — scale font so they fit
                             const ptEntries  = topTypes(s.types, 4);
                             const ptCount    = ptEntries.length;
-                            const ptFontSize = ptCount <= 1 ? 13 : ptCount === 2 ? 12 : 10;
+                            const ptFontSize = ptCount <= 1 ? 20 : ptCount === 2 ? 18 : 15;
 
                             return (
                               <div
@@ -531,7 +531,7 @@ export function BatterHistoryModal({
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
                                     {/* Total pitch count */}
-                                    <span className="font-black leading-none text-white" style={{ fontSize: 26 }}>{s.total}</span>
+                                    <span className="font-black leading-none text-white" style={{ fontSize: 16 }}>{s.total}</span>
                                     {/* Pitch types in their colours */}
                                     <div className="flex flex-wrap items-center justify-center mt-[3px] px-[2px]" style={{ gap: '2px 4px' }}>
                                       {ptEntries.map(([t, n]) => (
