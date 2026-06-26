@@ -27,11 +27,16 @@ interface CellStat {
   typeMisses: Record<string, number>;
 }
 
-// ── Zone names ────────────────────────────────────────────────────────────────
-const ZONE_NAMES: Record<string, string> = {
-  Z1:'Hi-In', Z2:'High',    Z3:'Hi-Out',
-  Z4:'Mid-In', Z5:'Center', Z6:'Mid-Out',
-  Z7:'Lo-In',  Z8:'Low',    Z9:'Lo-Out',
+// ── Zone names (static RHB defaults — overridden inside component by gridHand) ──
+const ZONE_NAMES_RHB: Record<string, string> = {
+  Z1:'Hi-In',  Z2:'High',    Z3:'Hi-Out',
+  Z4:'Mid-In', Z5:'Center',  Z6:'Mid-Out',
+  Z7:'Lo-In',  Z8:'Low',     Z9:'Lo-Out',
+};
+const ZONE_NAMES_LHB: Record<string, string> = {
+  Z1:'Hi-Out', Z2:'High',    Z3:'Hi-In',
+  Z4:'Mid-Out',Z5:'Center',  Z6:'Mid-In',
+  Z7:'Lo-Out', Z8:'Low',     Z9:'Lo-In',
 };
 
 // ── Color scale ───────────────────────────────────────────────────────────────
@@ -223,6 +228,12 @@ export function BatterHistoryModal({
   }
   const gridHand: 'R' | 'L' = handCounts.L > handCounts.R ? 'L' : 'R';
 
+  // Zone name labels adjust In/Out based on batter handedness.
+  // Z1 is the left column of the strike zone (from pitcher's POV):
+  //   RHB → left = Inside  → Z1 = 'Hi-In'
+  //   LHB → left = Outside → Z1 = 'Hi-Out'
+  const ZONE_NAMES = gridHand === 'R' ? ZONE_NAMES_RHB : ZONE_NAMES_LHB;
+
   // ── Build per-location stats (normalize Left/Right → In/Out) ──────────────
   const locStats: Record<string, CellStat> = {};
   let totalPitches = 0, totalSwings = 0, ballPitches = 0, ballSwings = 0, inPlayCount = 0;
@@ -274,15 +285,14 @@ export function BatterHistoryModal({
 
   // ── Ball-zone directional chase ───────────────────────────────────────────
   type Dir = 'High' | 'Low' | 'In' | 'Out';
+  // Ball-zone labels are recorded batter-relative:
+  //   B-In-Hi = inside-high to THIS batter (regardless of hand).
+  // No swap needed — the correct keys are the same for RHB and LHB.
   const dirKeys: Record<Dir, string[]> = {
     High: ['B-Up', 'B-Up-In', 'B-Up-Out'],
     Low:  ['B-Low', 'B-Low-In', 'B-Low-Out'],
-    In:   gridHand === 'R'
-            ? ['B-In-Hi', 'B-In', 'B-In-Lo']
-            : ['B-Out-Hi', 'B-Out', 'B-Out-Lo'],
-    Out:  gridHand === 'R'
-            ? ['B-Out-Hi', 'B-Out', 'B-Out-Lo']
-            : ['B-In-Hi', 'B-In', 'B-In-Lo'],
+    In:   ['B-In-Hi', 'B-In', 'B-In-Lo'],
+    Out:  ['B-Out-Hi', 'B-Out', 'B-Out-Lo'],
   };
   // Ball-zone chase (used for Chase Bait card only)
   const dirChase: Record<Dir, { total: number; swings: number }> = {
