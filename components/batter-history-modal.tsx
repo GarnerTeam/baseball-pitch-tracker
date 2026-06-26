@@ -264,9 +264,13 @@ export function BatterHistoryModal({
     if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, types: {}, typeSwings: {}, typeMisses: {} };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
+    const isMiss    = isSwing && !isContact;
+    const pt = (p.pitchType ?? '').toUpperCase() || '?';
     locStats[loc].total++;
-    if (isSwing)   { locStats[loc].swings++;   totalSwings++; }
-    if (isContact)   locStats[loc].contacts++;
+    locStats[loc].types[pt]      = (locStats[loc].types[pt]      ?? 0) + 1;
+    if (isSwing)  { locStats[loc].swings++;  totalSwings++;  locStats[loc].typeSwings[pt] = (locStats[loc].typeSwings[pt] ?? 0) + 1; }
+    if (isMiss)   { locStats[loc].typeMisses[pt] = (locStats[loc].typeMisses[pt] ?? 0) + 1; }
+    if (isContact)  locStats[loc].contacts++;
     totalPitches++;
     if (p.pitchZone === 'Ball') { ballPitches++; if (isSwing) ballSwings++; }
   }
@@ -505,7 +509,6 @@ export function BatterHistoryModal({
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
-                            const lbl = cellLabel(row, col, gridHand); // Hi-In, In, Lo-Out, etc.
                             // Dominant pitch type → cell tint
                             const domPT = topTypes(s.types, 1)[0]?.[0] ?? null;
                             const cellBgColor = s.total > 0 && domPT ? (PT_BG[domPT] ?? '#0f172a') : '#0f172a';
@@ -524,14 +527,6 @@ export function BatterHistoryModal({
                                   outline: isStrike ? '2px solid rgba(148,163,184,0.45)' : '1px solid rgba(255,255,255,0.06)',
                                 }}
                               >
-                                {/* Ball-zone location label — top of outer cells only */}
-                                {!isStrike && lbl && !isShadowCell(row, col) && (
-                                  <span
-                                    className="absolute top-[3px] inset-x-0 text-center font-semibold leading-none"
-                                    style={{ fontSize: 8, color: 'rgba(148,163,184,0.6)' }}
-                                  >{lbl}</span>
-                                )}
-
                                 {/* Shadow cells: tint only, no content */}
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
