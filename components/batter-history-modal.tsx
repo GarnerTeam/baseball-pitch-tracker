@@ -505,31 +505,39 @@ export function BatterHistoryModal({
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
+                            const lbl = cellLabel(row, col, gridHand); // Hi-In, In, Lo-Out, etc.
                             // Dominant pitch type → cell tint
                             const domPT = topTypes(s.types, 1)[0]?.[0] ?? null;
                             const cellBgColor = s.total > 0 && domPT ? (PT_BG[domPT] ?? '#0f172a') : '#0f172a';
-                            // How many pitch types to show — drives font sizing
-                            const ptEntries = topTypes(s.types, 4);
-                            const ptCount   = ptEntries.length;
-                            // Scale pitch-type font: 1 type = big, 3-4 types = smaller
+                            // Pitch type entries — scale font so they fit
+                            const ptEntries  = topTypes(s.types, 4);
+                            const ptCount    = ptEntries.length;
                             const ptFontSize = ptCount <= 1 ? 13 : ptCount === 2 ? 12 : 10;
 
                             return (
                               <div
                                 key={`${row}-${col}`}
-                                className="flex flex-col items-center justify-center select-none rounded-sm"
+                                className="relative flex flex-col items-center justify-center select-none rounded-sm"
                                 style={{
                                   background: cellBgColor,
                                   aspectRatio: '1', minHeight: 62,
                                   outline: isStrike ? '2px solid rgba(148,163,184,0.45)' : '1px solid rgba(255,255,255,0.06)',
                                 }}
                               >
+                                {/* Ball-zone location label — top of outer cells only */}
+                                {!isStrike && lbl && !isShadowCell(row, col) && (
+                                  <span
+                                    className="absolute top-[3px] inset-x-0 text-center font-semibold leading-none"
+                                    style={{ fontSize: 8, color: 'rgba(148,163,184,0.6)' }}
+                                  >{lbl}</span>
+                                )}
+
                                 {/* Shadow cells: tint only, no content */}
                                 {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
-                                    {/* Total pitch count — maximise size */}
+                                    {/* Total pitch count */}
                                     <span className="font-black leading-none text-white" style={{ fontSize: 26 }}>{s.total}</span>
-                                    {/* Pitch types — stacked pairs for readability */}
+                                    {/* Pitch types in their colours */}
                                     <div className="flex flex-wrap items-center justify-center mt-[3px] px-[2px]" style={{ gap: '2px 4px' }}>
                                       {ptEntries.map(([t, n]) => (
                                         <span key={t} className="font-black leading-none" style={{ fontSize: ptFontSize, color: PT_COLOR[t] ?? '#94a3b8' }}>
