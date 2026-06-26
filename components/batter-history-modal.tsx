@@ -103,6 +103,14 @@ function cellLabel(row: number, col: number, h: 'R' | 'L'): string {
   return '';
 }
 
+// ── Shadow cells ─────────────────────────────────────────────────────────────
+// Corner pairs (0,1)/(0,0), (0,3)/(0,4), (4,1)/(4,0), (4,3)/(4,4) share the
+// same pitchLocation key. The inner cell is a "shadow" — it shows the heat
+// colour but no count, so the grid total matches the actual pitch count.
+function isShadowCell(row: number, col: number): boolean {
+  return (row === 0 || row === 4) && (col === 1 || col === 3);
+}
+
 // ── Vertical bat SVG ─────────────────────────────────────────────────────────
 // Barrel at top, knob at bottom — placed left for RHB, right for LHB
 function BatSVG() {
@@ -404,10 +412,11 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                                   outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
                                 }}
                               >
-                                {zn && <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>{zn}</span>}
-                                {!isStrike && lbl && <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>{lbl}</span>}
+                                {zn && !isShadowCell(row, col) && <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>{zn}</span>}
+                                {!isStrike && lbl && !isShadowCell(row, col) && <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>{lbl}</span>}
 
-                                {s.total > 0 ? (
+                                {/* Shadow cells show heat colour only — no count (avoids double-counting corner pairs) */}
+                                {isShadowCell(row, col) ? null : s.total > 0 ? (
                                   <>
                                     <span className="font-black leading-none" style={{ fontSize: 20 }}>{s.total}</span>
                                     <span className="font-bold leading-none mt-[2px]" style={{ fontSize: 13 }}>
