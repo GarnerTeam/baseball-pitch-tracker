@@ -382,13 +382,15 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                         const key = cellLocKey(row, col, gridHand);
                         const s = key ? (locStats[key] ?? { total: 0, swings: 0, contacts: 0 }) : { total: 0, swings: 0, contacts: 0 };
 
-                        const pct = mapMode === 'swing'
-                          ? (s.total   >= 2 ? Math.round(s.swings   / s.total  * 100) : null)
-                          : (s.swings  >= 1 ? Math.round(s.contacts / s.swings * 100) : null);
+                        // Always compute pct — show for any cell with ≥1 pitch
+                        const swingPct  = s.total  > 0 ? Math.round(s.swings   / s.total  * 100) : null;
+                        const contactPct = s.swings > 0 ? Math.round(s.contacts / s.swings * 100) : null;
+                        const pct = mapMode === 'swing' ? swingPct : contactPct;
+                        const sampleN = mapMode === 'swing' ? s.total : s.swings;
 
                         const bg = mapMode === 'swing'
-                          ? swingBg(pct ?? 0, s.total)
-                          : contactBg(pct ?? 0, s.swings);
+                          ? swingBg(swingPct ?? 0, s.total)
+                          : contactBg(contactPct ?? 0, s.swings);
                         const fg = textColor(bg);
                         const lbl = cellLabel(row, col, gridHand);
 
@@ -400,34 +402,36 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                               background: bg,
                               color: fg,
                               aspectRatio: '1',
-                              minHeight: 54,
+                              minHeight: 58,
                               outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
                             }}
                           >
-                            {/* Zone number or ball label — top-left micro text */}
+                            {/* Zone number — top-left micro text */}
                             {zn && (
-                              <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-50" style={{ fontSize: 9 }}>
+                              <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-40" style={{ fontSize: 9 }}>
                                 {zn}
                               </span>
                             )}
+                            {/* Ball zone label — top center */}
                             {!isStrike && lbl && (
                               <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>
                                 {lbl}
                               </span>
                             )}
 
-                            {/* Main stat */}
-                            {pct !== null ? (
+                            {s.total > 0 ? (
                               <>
-                                <span className="font-black leading-none" style={{ fontSize: 17 }}>
-                                  {pct}<span style={{ fontSize: 9 }}>%</span>
+                                {/* Count — primary large number */}
+                                <span className="font-black leading-none" style={{ fontSize: 20 }}>
+                                  {s.total}
                                 </span>
-                                <span className="leading-none opacity-50 mt-[1px]" style={{ fontSize: 9 }}>
-                                  {mapMode === 'swing' ? s.total : s.swings}
+                                {/* Swing % or Contact % — secondary line */}
+                                <span className="font-bold leading-none mt-[2px]" style={{ fontSize: 13 }}>
+                                  {pct !== null ? `${pct}%` : mapMode === 'swing' ? '—' : 'n/a'}
                                 </span>
                               </>
                             ) : (
-                              <span className="font-black opacity-20" style={{ fontSize: 15 }}>—</span>
+                              <span className="font-black opacity-15" style={{ fontSize: 14 }}>—</span>
                             )}
                           </div>
                         );
