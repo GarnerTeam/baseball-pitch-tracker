@@ -10,9 +10,9 @@ interface PitchRow {
   batterHand?: string;
   pitchType?: string;
   pitchZone?: string;      // "Strike" | "Ball"
-  pitchLocation?: string;  // "Z1"–"Z9" | "B-Up" | "B-Low" | "B-In-Hi" | …
+  pitchLocation?: string;  // "Z1"–"Z9" | "B-Up" | "B-Low-In" | …
   action?: string;         // "Swing" | "Look"
-  outcome?: string;        // "strike"|"ball"|"foul"|"foul-tip"|"in-play"|"swinging-strike"|"strikeout"|"walk"
+  outcome?: string;        // "strike"|"ball"|"foul"|"foul-tip"|"in-play"|…
   hitResult?: string;
   hitType?: string;
   hitX?: number | string;
@@ -20,11 +20,9 @@ interface PitchRow {
   atBatNumber?: number | string;
 }
 
-interface ZoneStat { total: number; swings: number; contacts: number }
-type BallDir = 'UP' | 'LOW' | 'IN' | 'OUT';
+interface CellStat { total: number; swings: number; contacts: number }
 
-// ── Zone mappings ─────────────────────────────────────────────────────────────
-const ZONES = ['Z1','Z2','Z3','Z4','Z5','Z6','Z7','Z8','Z9'] as const;
+// ── Zone names (for quick-read cards) ────────────────────────────────────────
 const ZONE_NAMES: Record<string, string> = {
   Z1:'Hi-In', Z2:'High',    Z3:'Hi-Out',
   Z4:'Mid-In', Z5:'Center', Z6:'Mid-Out',
@@ -33,7 +31,7 @@ const ZONE_NAMES: Record<string, string> = {
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 function swingBg(pct: number, total: number): string {
-  if (total < 3) return '#1e293b';
+  if (total < 2) return '#1e293b';
   if (pct >= 75) return '#b91c1c';
   if (pct >= 55) return '#c2410c';
   if (pct >= 40) return '#a16207';
@@ -41,7 +39,7 @@ function swingBg(pct: number, total: number): string {
   return '#1e3a8a';
 }
 function contactBg(pct: number, swings: number): string {
-  if (swings < 2) return '#1e293b';
+  if (swings < 1) return '#1e293b';
   if (pct >= 70) return '#b91c1c';
   if (pct >= 50) return '#c2410c';
   if (pct >= 35) return '#a16207';
@@ -49,18 +47,67 @@ function contactBg(pct: number, swings: number): string {
   return '#1e3a8a';
 }
 function textColor(bg: string): string {
-  return bg === '#1e293b' ? '#475569' : '#ffffff';
+  return bg === '#1e293b' ? '#475569' : bg === '#1e3a8a' ? '#93c5fd' : '#ffffff';
 }
 
-// ── Ball direction classifier ────────────────────────────────────────────────
-function ballDir(loc: string): BallDir | null {
-  if (!loc.startsWith('B-')) return null;
-  const s = loc.slice(2).toLowerCase();
-  if (s.includes('up') || s.includes('hi')) return 'UP';
-  if (s.includes('low') || s.includes('lo')) return 'LOW';
-  if (s.includes('in')) return 'IN';
-  if (s.includes('out')) return 'OUT';
+// ── 5×5 grid helpers ──────────────────────────────────────────────────────────
+/**
+ * Returns the pitchLocation key for a given (row, col) in the 5×5 grid.
+ * Strike cells (1-3, 1-3) → "Z1"–"Z9"
+ * Ball cells → the label that ballLocationLabel() would produce for this hand.
+ */
+function cellLocKey(row: number, col: number, h: 'R' | 'L'): string | null {
+  // Strike zone inner 3×3
+  if (row >= 1 && row <= 3 && col >= 1 && col <= 3) {
+    return `Z${(row - 1) * 3 + (col - 1) + 1}`;
+  }
+  const r = h === 'R';
+  const top = row === 0, bot = row === 4;
+  const lft = col <= 1, rgt = col >= 3, mc = col === 2;
+
+  if (top  && lft) return r ? 'B-Up-In'   : 'B-Up-Out';
+  if (top  && mc)  return 'B-Up';
+  if (top  && rgt) return r ? 'B-Up-Out'  : 'B-Up-In';
+
+  if (bot  && lft) return r ? 'B-Low-In'  : 'B-Low-Out';
+  if (bot  && mc)  return 'B-Low';
+  if (bot  && rgt) return r ? 'B-Low-Out' : 'B-Low-In';
+
+  if (lft && row === 1) return r ? 'B-In-Hi'  : 'B-Out-Hi';
+  if (lft && row === 2) return r ? 'B-In'     : 'B-Out';
+  if (lft && row === 3) return r ? 'B-In-Lo'  : 'B-Out-Lo';
+
+  if (rgt && row === 1) return r ? 'B-Out-Hi' : 'B-In-Hi';
+  if (rgt && row === 2) return r ? 'B-Out'    : 'B-In';
+  if (rgt && row === 3) return r ? 'B-Out-Lo' : 'B-In-Lo';
+
   return null;
+}
+
+/** Short label shown inside ball-zone cells. */
+function cellLabel(row: number, col: number, h: 'R' | 'L'): string {
+  if (row >= 1 && row <= 3 && col >= 1 && col <= 3) return '';
+  const r = h === 'R';
+  const top = row === 0, bot = row === 4;
+  const lft = col <= 1, rgt = col >= 3, mc = col === 2;
+
+  if (top  && lft) return r ? 'Hi-In'  : 'Hi-Out';
+  if (top  && mc)  return 'Hi';
+  if (top  && rgt) return r ? 'Hi-Out' : 'Hi-In';
+
+  if (bot  && lft) return r ? 'Lo-In'  : 'Lo-Out';
+  if (bot  && mc)  return 'Lo';
+  if (bot  && rgt) return r ? 'Lo-Out' : 'Lo-In';
+
+  if (lft && row === 1) return r ? 'In-Hi'  : 'Out-Hi';
+  if (lft && row === 2) return r ? 'In'     : 'Out';
+  if (lft && row === 3) return r ? 'In-Lo'  : 'Out-Lo';
+
+  if (rgt && row === 1) return r ? 'Out-Hi' : 'In-Hi';
+  if (rgt && row === 2) return r ? 'Out'    : 'In';
+  if (rgt && row === 3) return r ? 'Out-Lo' : 'In-Lo';
+
+  return '';
 }
 
 // ── Spray chart SVG constants (same as lineup-panel) ─────────────────────────
@@ -112,54 +159,41 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
       .finally(() => setLoading(false));
   }, [playerName, playerNumber, webhookUrl]);
 
-  // ── Compute stats ──────────────────────────────────────────────────────────
-  const zoneStats: Record<string, ZoneStat> = {};
-  ZONES.forEach(z => { zoneStats[z] = { total: 0, swings: 0, contacts: 0 }; });
-  const bStats: Record<BallDir, ZoneStat> = {
-    UP:  { total:0, swings:0, contacts:0 },
-    LOW: { total:0, swings:0, contacts:0 },
-    IN:  { total:0, swings:0, contacts:0 },
-    OUT: { total:0, swings:0, contacts:0 },
-  };
+  // ── Determine predominant batter hand ─────────────────────────────────────
+  const handCounts = { R: 0, L: 0 };
+  for (const p of pitches) {
+    if (p.batterHand === 'R') handCounts.R++;
+    else if (p.batterHand === 'L') handCounts.L++;
+  }
+  const gridHand: 'R' | 'L' = handCounts.L > handCounts.R ? 'L' : 'R';
 
-  let totalSwings = 0, totalBalls = 0, ballSwings = 0;
+  // ── Build per-location stats ───────────────────────────────────────────────
+  const locStats: Record<string, CellStat> = {};
+  let totalSwings = 0, totalPitches = 0, ballPitches = 0, ballSwings = 0;
 
   for (const p of pitches) {
     const loc = (p.pitchLocation ?? '').trim();
+    if (!loc) continue;
+    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0 };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
-    if (isSwing) totalSwings++;
-    if (p.pitchZone === 'Ball') { totalBalls++; if (isSwing) ballSwings++; }
-
-    if (zoneStats[loc]) {
-      zoneStats[loc].total++;
-      if (isSwing)   zoneStats[loc].swings++;
-      if (isContact) zoneStats[loc].contacts++;
-    } else {
-      const d = ballDir(loc);
-      if (d) {
-        bStats[d].total++;
-        if (isSwing)   bStats[d].swings++;
-        if (isContact) bStats[d].contacts++;
-      }
-    }
+    locStats[loc].total++;
+    if (isSwing)   { locStats[loc].swings++;   totalSwings++; }
+    if (isContact)   locStats[loc].contacts++;
+    totalPitches++;
+    if (p.pitchZone === 'Ball') { ballPitches++; if (isSwing) ballSwings++; }
   }
 
-  const uniqueGames = new Set(pitches.map(p => p.gameId).filter(Boolean)).size;
-  const overallSwingPct = pitches.length ? Math.round((totalSwings / pitches.length) * 100) : 0;
-  const chaseRate = totalBalls > 0 ? Math.round((ballSwings / totalBalls) * 100) : 0;
-
-  // Quick insight computations (min 3 pitches for swing, min 2 swings for K-zone)
-  const rankedZones = ZONES
+  // ── Quick-read cards from strike zones ────────────────────────────────────
+  const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
-      const s = zoneStats[z];
+      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0 };
       return {
         zone: z,
         name: ZONE_NAMES[z],
         ...s,
-        swingPct:   s.total >= 3 ? Math.round((s.swings / s.total) * 100) : -1,
-        missPct:    s.swings >= 2 ? Math.round(((s.swings - s.contacts) / s.swings) * 100) : -1,
-        contactPct: s.swings >= 2 ? Math.round((s.contacts / s.swings) * 100) : -1,
+        swingPct: s.total  >= 3 ? Math.round(s.swings / s.total  * 100) : -1,
+        missPct:  s.swings >= 2 ? Math.round((s.swings - s.contacts) / s.swings * 100) : -1,
       };
     })
     .filter(z => z.swingPct >= 0);
@@ -168,7 +202,11 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
   const coldZone = [...rankedZones].sort((a,b) => a.swingPct - b.swingPct)[0];
   const kZone    = [...rankedZones].filter(z => z.missPct >= 0).sort((a,b) => b.missPct - a.missPct)[0];
 
-  // Spray hits
+  const uniqueGames      = new Set(pitches.map(p => p.gameId).filter(Boolean)).size;
+  const overallSwingPct  = totalPitches > 0 ? Math.round(totalSwings / totalPitches * 100) : 0;
+  const chaseRate        = ballPitches  > 0 ? Math.round(ballSwings  / ballPitches  * 100) : 0;
+
+  // ── Spray hits ────────────────────────────────────────────────────────────
   const hits = pitches.filter(p =>
     p.hitResult &&
     p.hitX !== '' && p.hitX !== undefined && !isNaN(Number(p.hitX)) &&
@@ -178,6 +216,7 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
+
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
         <button onClick={onClose} className="text-slate-400 hover:text-white text-[26px] leading-none w-8 flex-shrink-0">←</button>
@@ -186,7 +225,7 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
             #{playerNumber} {playerName}
           </p>
           <p className="text-slate-500 text-[13px]">
-            {loading ? 'Loading…' : `${pitches.length} pitches · ${uniqueGames} game${uniqueGames !== 1 ? 's' : ''}`}
+            {loading ? 'Loading…' : `${totalPitches} pitches · ${uniqueGames} game${uniqueGames !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex rounded-lg overflow-hidden border border-slate-700 flex-shrink-0">
@@ -228,7 +267,7 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
         )}
 
         {/* Empty */}
-        {!loading && !fetchError && pitches.length === 0 && (
+        {!loading && !fetchError && totalPitches === 0 && (
           <div className="flex flex-col items-center justify-center h-48 gap-2">
             <p className="text-slate-400 text-[18px]">No history found</p>
             <p className="text-slate-600 text-[15px]">for {playerName} #{playerNumber}</p>
@@ -236,15 +275,15 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
         )}
 
         {/* Data */}
-        {!loading && !fetchError && pitches.length > 0 && (
+        {!loading && !fetchError && totalPitches > 0 && (
           <div className="pb-8 space-y-4">
 
             {/* ── Overall stats strip ── */}
             <div className="grid grid-cols-3 gap-0 border-b border-slate-800">
               {[
-                { label: 'Swing%', value: `${overallSwingPct}%` },
-                { label: 'Chase%', value: `${chaseRate}%` },
-                { label: 'Pitches', value: pitches.length },
+                { label: 'Swing%',  value: `${overallSwingPct}%` },
+                { label: 'Chase%',  value: `${chaseRate}%` },
+                { label: 'Pitches', value: totalPitches },
               ].map(({ label, value }) => (
                 <div key={label} className="py-3 text-center border-r border-slate-800 last:border-r-0">
                   <p className="text-white font-black text-[22px] leading-none">{value}</p>
@@ -257,7 +296,6 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
             <div className="px-4">
               <p className="text-slate-500 text-[12px] uppercase tracking-widest mb-2">Quick Read — Game Time</p>
               <div className="grid grid-cols-3 gap-2">
-                {/* Hot zone */}
                 <div className="rounded-xl p-3 text-center border" style={{ background: '#3b0000', borderColor: '#7f1d1d' }}>
                   <p className="text-[11px] text-red-400 uppercase tracking-wide mb-1">🔥 Swings</p>
                   {hotZone ? (
@@ -266,12 +304,8 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                       <p className="text-red-300 text-[13px] font-semibold mt-0.5">{hotZone.name}</p>
                       <p className="text-red-700 text-[11px]">{hotZone.total}p</p>
                     </>
-                  ) : (
-                    <p className="text-red-800 text-[13px] mt-1">—</p>
-                  )}
+                  ) : <p className="text-red-800 text-[13px] mt-1">—</p>}
                 </div>
-
-                {/* Cold zone */}
                 <div className="rounded-xl p-3 text-center border" style={{ background: '#0c1a2e', borderColor: '#1e3a5f' }}>
                   <p className="text-[11px] text-blue-400 uppercase tracking-wide mb-1">👁 Takes</p>
                   {coldZone ? (
@@ -280,12 +314,8 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                       <p className="text-blue-300 text-[13px] font-semibold mt-0.5">{coldZone.name}</p>
                       <p className="text-blue-800 text-[11px]">{coldZone.total}p</p>
                     </>
-                  ) : (
-                    <p className="text-blue-800 text-[13px] mt-1">—</p>
-                  )}
+                  ) : <p className="text-blue-800 text-[13px] mt-1">—</p>}
                 </div>
-
-                {/* K zone */}
                 <div className="rounded-xl p-3 text-center border" style={{ background: '#1a0a2e', borderColor: '#4a1d8a' }}>
                   <p className="text-[11px] text-purple-400 uppercase tracking-wide mb-1">⚡ K-Zone</p>
                   {kZone ? (
@@ -294,89 +324,132 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                       <p className="text-purple-300 text-[13px] font-semibold mt-0.5">{kZone.name}</p>
                       <p className="text-purple-800 text-[11px]">miss rate</p>
                     </>
-                  ) : (
-                    <p className="text-purple-800 text-[13px] mt-1">Not enough swings</p>
-                  )}
+                  ) : <p className="text-purple-800 text-[13px] mt-1">Not enough swings</p>}
                 </div>
               </div>
             </div>
 
-            {/* ══════════════════════════════════ HEAT MAP VIEW ══════════════════════════════════ */}
+            {/* ══════════════════════════ HEAT MAP VIEW ══════════════════════════ */}
             {view === 'heatmap' && (
               <div className="px-4 space-y-4">
 
                 {/* Mode toggle */}
                 <div className="flex items-center justify-between">
                   <p className="text-slate-500 text-[12px] uppercase tracking-widest">Zone Heat Map</p>
-                  <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                    <button
-                      onClick={() => setMapMode('swing')}
-                      className={`px-3 py-1 text-[13px] font-semibold transition-colors ${mapMode === 'swing' ? 'bg-orange-700 text-white' : 'bg-slate-800 text-slate-400'}`}
-                    >
-                      Swing %
-                    </button>
-                    <button
-                      onClick={() => setMapMode('contact')}
-                      className={`px-3 py-1 text-[13px] font-semibold transition-colors ${mapMode === 'contact' ? 'bg-green-700 text-white' : 'bg-slate-800 text-slate-400'}`}
-                    >
-                      Contact %
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-600 text-[11px] bg-slate-800 px-2 py-0.5 rounded">
+                      {gridHand}HB view
+                    </span>
+                    <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                      <button
+                        onClick={() => setMapMode('swing')}
+                        className={`px-3 py-1 text-[13px] font-semibold transition-colors ${mapMode === 'swing' ? 'bg-orange-700 text-white' : 'bg-slate-800 text-slate-400'}`}
+                      >
+                        Swing %
+                      </button>
+                      <button
+                        onClick={() => setMapMode('contact')}
+                        className={`px-3 py-1 text-[13px] font-semibold transition-colors ${mapMode === 'contact' ? 'bg-green-700 text-white' : 'bg-slate-800 text-slate-400'}`}
+                      >
+                        Contact %
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* ── 3×3 Strike zone grid ── */}
-                <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
-                  {/* Column labels */}
-                  <div className="grid grid-cols-3 mb-1.5 text-center">
-                    {['HI-IN','HIGH','HI-OUT'].map(l => (
-                      <p key={l} className="text-slate-600 text-[10px] uppercase tracking-wide">{l}</p>
+                {/* ── 5×5 grid ── */}
+                <div className="bg-slate-900 rounded-2xl p-3 border border-slate-800">
+
+                  {/* Axis labels: top row outside */}
+                  <div className="grid mb-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+                    {[
+                      gridHand === 'R' ? 'In' : 'Out',
+                      '',
+                      'High',
+                      '',
+                      gridHand === 'R' ? 'Out' : 'In',
+                    ].map((lbl, i) => (
+                      <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{lbl}</p>
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    {ZONES.map(zone => {
-                      const s = zoneStats[zone];
-                      const pct = mapMode === 'swing'
-                        ? (s.total   >= 3 ? Math.round((s.swings   / s.total)  * 100) : null)
-                        : (s.swings  >= 2 ? Math.round((s.contacts / s.swings) * 100) : null);
-                      const bg = mapMode === 'swing'
-                        ? swingBg(pct ?? 0, s.total)
-                        : contactBg(pct ?? 0, s.swings);
-                      const fg = textColor(bg);
-                      const sampleSize = mapMode === 'swing' ? s.total : s.swings;
-                      return (
-                        <div
-                          key={zone}
-                          className="rounded-xl flex flex-col items-center justify-center pt-3 pb-2 relative select-none"
-                          style={{ background: bg, color: fg, minHeight: 80 }}
-                        >
-                          <span className="absolute top-1.5 left-2 text-[10px] opacity-50">{zone}</span>
-                          {pct !== null ? (
-                            <>
-                              <span className="text-[28px] font-black leading-none">{pct}<span className="text-[16px]">%</span></span>
-                              <span className="text-[11px] opacity-60 mt-0.5">{sampleSize} {mapMode === 'swing' ? 'seen' : 'swings'}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-[22px] font-black opacity-30">—</span>
-                              <span className="text-[11px] opacity-30">{sampleSize}</span>
-                            </>
-                          )}
-                          <span className="text-[10px] opacity-40 mt-0.5">{ZONE_NAMES[zone]}</span>
-                        </div>
-                      );
-                    })}
+                  {/* Grid */}
+                  <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                    {Array.from({ length: 5 }).flatMap((_, row) =>
+                      Array.from({ length: 5 }).map((_, col) => {
+                        const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
+                        const zn = isStrike ? (row - 1) * 3 + (col - 1) + 1 : null;
+                        const key = cellLocKey(row, col, gridHand);
+                        const s = key ? (locStats[key] ?? { total: 0, swings: 0, contacts: 0 }) : { total: 0, swings: 0, contacts: 0 };
+
+                        const pct = mapMode === 'swing'
+                          ? (s.total   >= 2 ? Math.round(s.swings   / s.total  * 100) : null)
+                          : (s.swings  >= 1 ? Math.round(s.contacts / s.swings * 100) : null);
+
+                        const bg = mapMode === 'swing'
+                          ? swingBg(pct ?? 0, s.total)
+                          : contactBg(pct ?? 0, s.swings);
+                        const fg = textColor(bg);
+                        const lbl = cellLabel(row, col, gridHand);
+
+                        return (
+                          <div
+                            key={`${row}-${col}`}
+                            className="flex flex-col items-center justify-center relative select-none rounded-sm"
+                            style={{
+                              background: bg,
+                              color: fg,
+                              aspectRatio: '1',
+                              minHeight: 54,
+                              outline: isStrike ? '1.5px solid rgba(148,163,184,0.35)' : 'none',
+                            }}
+                          >
+                            {/* Zone number or ball label — top-left micro text */}
+                            {zn && (
+                              <span className="absolute top-[2px] left-[3px] font-bold leading-none opacity-50" style={{ fontSize: 9 }}>
+                                {zn}
+                              </span>
+                            )}
+                            {!isStrike && lbl && (
+                              <span className="absolute top-[2px] inset-x-0 text-center leading-none opacity-40" style={{ fontSize: 8 }}>
+                                {lbl}
+                              </span>
+                            )}
+
+                            {/* Main stat */}
+                            {pct !== null ? (
+                              <>
+                                <span className="font-black leading-none" style={{ fontSize: 17 }}>
+                                  {pct}<span style={{ fontSize: 9 }}>%</span>
+                                </span>
+                                <span className="leading-none opacity-50 mt-[1px]" style={{ fontSize: 9 }}>
+                                  {mapMode === 'swing' ? s.total : s.swings}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-black opacity-20" style={{ fontSize: 15 }}>—</span>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
 
-                  {/* Row labels */}
-                  <div className="grid grid-cols-3 mt-1.5 text-center">
-                    {['LO-IN','LOW','LO-OUT'].map(l => (
-                      <p key={l} className="text-slate-600 text-[10px] uppercase tracking-wide">{l}</p>
+                  {/* Axis labels: bottom */}
+                  <div className="grid mt-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+                    {[
+                      gridHand === 'R' ? 'In' : 'Out',
+                      '',
+                      'Low',
+                      '',
+                      gridHand === 'R' ? 'Out' : 'In',
+                    ].map((lbl, i) => (
+                      <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{lbl}</p>
                     ))}
                   </div>
 
                   {/* Legend */}
-                  <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+                  <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
                     {mapMode === 'swing' ? (
                       <>
                         <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{background:'#1e3a8a'}} /><span className="text-slate-500 text-[11px]">Takes (&lt;25%)</span></div>
@@ -391,36 +464,47 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                       </>
                     )}
                   </div>
+
+                  {/* Strike zone outline note */}
+                  <p className="text-center text-slate-700 text-[10px] mt-2">
+                    ░ outlined = strike zone · outer cells = ball zones
+                  </p>
                 </div>
 
-                {/* ── Out-of-zone chase rates ── */}
+                {/* ── Out-of-zone chase summary ── */}
                 <div>
-                  <p className="text-slate-500 text-[12px] uppercase tracking-widest mb-2">Out-of-Zone Chase Rate</p>
+                  <p className="text-slate-500 text-[12px] uppercase tracking-widest mb-2">Ball-Zone Chase Rate</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['UP','LOW','IN','OUT'] as BallDir[]).map(dir => {
-                      const s = bStats[dir];
-                      const pct = s.total >= 2 ? Math.round((s.swings / s.total) * 100) : null;
-                      const arrows: Record<BallDir,string> = { UP:'↑ High', LOW:'↓ Low', IN:'← Inside', OUT:'→ Outside' };
-                      const hot = pct !== null && pct >= 40;
+                    {([
+                      { dir: 'High',   locs: ['B-Up','B-Up-In','B-Up-Out'] },
+                      { dir: 'Low',    locs: ['B-Low','B-Low-In','B-Low-Out'] },
+                      { dir: gridHand === 'R' ? 'Inside' : 'Outside',  locs: ['B-In-Hi','B-In','B-In-Lo','B-Out-Hi','B-Out','B-Out-Lo'].filter(l => (gridHand === 'R') === l.startsWith('B-In')) },
+                      { dir: gridHand === 'R' ? 'Outside' : 'Inside', locs: ['B-In-Hi','B-In','B-In-Lo','B-Out-Hi','B-Out','B-Out-Lo'].filter(l => (gridHand === 'R') !== l.startsWith('B-In')) },
+                    ] as { dir: string; locs: string[] }[]).map(({ dir, locs }) => {
+                      const agg = locs.reduce((acc, l) => {
+                        const s = locStats[l];
+                        if (s) { acc.total += s.total; acc.swings += s.swings; }
+                        return acc;
+                      }, { total: 0, swings: 0 });
+                      const pct = agg.total >= 2 ? Math.round(agg.swings / agg.total * 100) : null;
+                      const hot = pct !== null && pct >= 35;
                       return (
                         <div key={dir} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 flex items-center justify-between">
-                          <span className="text-slate-400 text-[16px]">{arrows[dir]}</span>
+                          <span className="text-slate-400 text-[16px]">{dir}</span>
                           <div className="text-right">
                             <p className={`font-bold text-[20px] leading-none ${hot ? 'text-orange-400' : 'text-blue-400'}`}>
                               {pct !== null ? `${pct}%` : '—'}
                             </p>
-                            <p className="text-slate-600 text-[11px]">{s.total}p</p>
+                            <p className="text-slate-600 text-[11px]">{agg.total}p</p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* Overall chase */}
                   <div className="mt-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 flex items-center justify-between">
-                    <span className="text-slate-300 text-[16px] font-medium">Overall Chase Rate</span>
+                    <span className="text-slate-300 text-[16px] font-medium">Overall Chase</span>
                     <span className={`font-bold text-[20px] ${chaseRate >= 35 ? 'text-orange-400' : 'text-blue-400'}`}>
-                      {chaseRate}%
+                      {chaseRate > 0 ? `${chaseRate}%` : '—'}
                     </span>
                   </div>
                 </div>
@@ -428,29 +512,22 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
               </div>
             )}
 
-            {/* ══════════════════════════════════ SPRAY VIEW ══════════════════════════════════ */}
+            {/* ══════════════════════════ SPRAY VIEW ══════════════════════════ */}
             {view === 'spray' && (
               <div className="px-4">
                 <p className="text-slate-500 text-[12px] uppercase tracking-widest mb-3">
                   Spray Chart — All Hits ({hits.length})
                 </p>
                 <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full rounded-2xl" style={{ background: '#0a140a' }}>
-                  {/* Warning track */}
                   <path d={`M ${SHX} ${SHY} L ${SLFPX} ${SLFPY} A ${SR_FENCE} ${SR_FENCE} 0 0 1 ${SRFPX} ${SRFPY} Z`} fill="#7a5c3a" />
-                  {/* Outfield */}
                   <path d={`M ${SHX} ${SHY} L ${SWARN_LX} ${SWARN_LY} A ${SR_WARN} ${SR_WARN} 0 0 1 ${SWARN_RX} ${SWARN_RY} Z`} fill="#173d10" />
-                  {/* Infield dirt */}
                   <path d={`M ${SHX} ${SHY} L ${SB1X} ${SB1Y} L ${SB2X} ${SB2Y} L ${SB3X} ${SB3Y} Z`} fill="#1e5216" />
                   <path d={`M ${SHX} ${SHY} L ${SB1X} ${SB1Y} L ${SB2X} ${SB2Y} L ${SB3X} ${SB3Y} Z`} fill="#7a5230" opacity="0.45" />
-                  {/* Fence */}
                   <path d={`M ${SLFPX} ${SLFPY} A ${SR_FENCE} ${SR_FENCE} 0 0 1 ${SRFPX} ${SRFPY}`} fill="none" stroke="#e5a020" strokeWidth="2.5" opacity="0.85" />
-                  {/* Foul lines */}
                   <line x1={SHX} y1={SHY} x2={SLFPX} y2={SLFPY} stroke="#ffffff" strokeWidth="1.5" opacity="0.5" />
                   <line x1={SHX} y1={SHY} x2={SRFPX} y2={SRFPY} stroke="#ffffff" strokeWidth="1.5" opacity="0.5" />
-                  {/* Mound */}
                   <circle cx={SMX} cy={SMY} r="9" fill="#9B6E4C" opacity="0.8" />
                   <circle cx={SMX} cy={SMY} r="2" fill="#ccc" opacity="0.9" />
-                  {/* Bases */}
                   {([
                     [SHX, SHY, 'H', false],
                     [SB1X, SB1Y, '1', true],
@@ -480,7 +557,6 @@ export function BatterHistoryModal({ playerName, playerNumber, webhookUrl, onClo
                     })
                   )}
                 </svg>
-                {/* Legend */}
                 <div className="mt-2 flex gap-4 flex-wrap items-center">
                   {[
                     { color:'#22c55e', label:'Hit' },
