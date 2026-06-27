@@ -156,7 +156,7 @@ function BaseDiamond({
           <div className="absolute top-0 left-1/2 -translate-x-1/2">{baseBtn('second', baseState.second)}</div>
           <div className="absolute left-0 top-1/2 -translate-y-1/2">{baseBtn('third', baseState.third)}</div>
           <div className="absolute right-0 top-1/2 -translate-y-1/2">{baseBtn('first', baseState.first)}</div>
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-4 bg-white" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-white" style={{ width: 18, height: 16, clipPath: "polygon(0% 0%, 100% 0%, 100% 55%, 50% 100%, 0% 55%)" }} />
         </div>
       </div>
       <div className="flex items-center gap-2">
