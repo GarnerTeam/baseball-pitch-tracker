@@ -21,7 +21,7 @@ interface PitchRow {
 }
 
 interface CellStat {
-  total: number; swings: number; contacts: number;
+  total: number; swings: number; contacts: number; inPlay: number;
   types:      Record<string, number>;
   typeSwings: Record<string, number>;
   typeMisses: Record<string, number>;
@@ -261,16 +261,18 @@ export function BatterHistoryModal({
     const pitchHand = (p.batterHand === 'L' || p.batterHand === 'R') ? p.batterHand : gridHand;
     const loc = normalizeLocation(rawLoc, pitchHand);
 
-    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, types: {}, typeSwings: {}, typeMisses: {} };
+    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {} };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
+    const isInPlay  = isSwing && p.outcome === 'in-play';
     const isMiss    = isSwing && !isContact;
     const pt = (p.pitchType ?? '').toUpperCase() || '?';
     locStats[loc].total++;
     locStats[loc].types[pt]      = (locStats[loc].types[pt]      ?? 0) + 1;
-    if (isSwing)  { locStats[loc].swings++;  totalSwings++;  locStats[loc].typeSwings[pt] = (locStats[loc].typeSwings[pt] ?? 0) + 1; }
-    if (isMiss)   { locStats[loc].typeMisses[pt] = (locStats[loc].typeMisses[pt] ?? 0) + 1; }
-    if (isContact)  locStats[loc].contacts++;
+    if (isSwing)   { locStats[loc].swings++;  totalSwings++;  locStats[loc].typeSwings[pt] = (locStats[loc].typeSwings[pt] ?? 0) + 1; }
+    if (isMiss)    { locStats[loc].typeMisses[pt] = (locStats[loc].typeMisses[pt] ?? 0) + 1; }
+    if (isContact)   locStats[loc].contacts++;
+    if (isInPlay)    locStats[loc].inPlay++;
     totalPitches++;
     if (p.pitchZone === 'Ball') { ballPitches++; if (isSwing) ballSwings++; }
   }
@@ -278,7 +280,7 @@ export function BatterHistoryModal({
   // ── Quick-read (strike zone only, min 2 pitches) ──────────────────────────
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
-      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, types: {}, typeSwings: {}, typeMisses: {} };
+      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {} };
       const misses = s.swings - s.contacts;
       return {
         zone: z, name: ZONE_NAMES[z], ...s,
@@ -502,15 +504,46 @@ export function BatterHistoryModal({
                         ))}
                       </div>
 
+                      {/* Legend */}
+                      <div className="flex items-center justify-center gap-3 mb-1.5">
+                        {([['rgba(59,130,246,0.85)','Takes'],['rgba(239,68,68,0.85)','Swings'],['rgba(234,179,8,0.85)','In Play']] as [string,string][]).map(([c,l]) => (
+                          <div key={l} className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: c }} />
+                            <span className="text-slate-400 font-medium" style={{ fontSize: 10 }}>{l}</span>
+                          </div>
+                        ))}
+                      </div>
+
                       {/* Grid */}
                       <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
                         {Array.from({ length: 5 }).flatMap((_, row) =>
                           Array.from({ length: 5 }).map((_, col) => {
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
-                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
-                            // Uniform dark cell background — PT info shown via colored text labels
-                            const cellBgColor = '#0f172a';
+                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{} };
+                            // ── Swing / Take / In-Play heat map ──────────────
+                            // Confidence fades from 0.25 (1 pitch) → 0.85 (4+ pitches)
+                            const confidence = s.total === 0 ? 0
+                              : s.total === 1 ? 0.28
+                              : s.total === 2 ? 0.50
+                              : s.total === 3 ? 0.68
+                              : 0.85;
+                            let cellBgColor = '#0f172a';
+                            if (s.total > 0) {
+                              const takes      = s.total - s.swings;
+                              const swingNoIn  = s.swings - s.inPlay;
+                              // Dominant of three categories determines color
+                              if (s.inPlay > 0 && s.inPlay >= takes && s.inPlay >= swingNoIn) {
+                                // Gold — puts ball in play most often
+                                cellBgColor = `rgba(234,179,8,${confidence})`;
+                              } else if (takes >= s.swings) {
+                                // Blue — takes / looks
+                                cellBgColor = `rgba(59,130,246,${confidence})`;
+                              } else {
+                                // Red — swings (misses / fouls dominant)
+                                cellBgColor = `rgba(239,68,68,${confidence})`;
+                              }
+                            }
                             // Pitch type entries — scale font so they fit
                             const ptEntries  = topTypes(s.types, 4);
                             const ptCount    = ptEntries.length;
