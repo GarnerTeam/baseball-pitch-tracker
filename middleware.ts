@@ -4,7 +4,9 @@ import { NextResponse } from 'next/server';
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/scout(.*)',
+  '/scout(.*)',               // read-only scout view page
+  '/api/sheets/scout(.*)',   // scout data API (called by unauthenticated scout page)
+  '/api/sheets/history(.*)', // history API (called by batter history modal on scout page)
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
