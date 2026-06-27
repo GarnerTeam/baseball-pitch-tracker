@@ -14,6 +14,7 @@ interface SyncStatus {
 
 interface LineupPanelProps {
   state: GameState;
+  readOnly?: boolean;
   onNextBatter: () => void;
   onPrevBatter: () => void;
   onEndAtBat: () => void;
@@ -319,7 +320,8 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
 }
 
 export function LineupPanel({
-  state, onNextBatter, onPrevBatter, onEndAtBat,
+  state, readOnly = false,
+  onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onUndoLastEnd, onSetWebhookUrl, syncStatus,
 }: LineupPanelProps) {
@@ -486,6 +488,7 @@ export function LineupPanel({
     <div className="flex flex-col h-full overflow-y-scroll bg-slate-950 text-slate-100" style={{ WebkitOverflowScrolling: "touch" }}>
 
       {/* ── At-Bat Controls ─────────────────────────────────────────────── */}
+      {!readOnly && (
       <div className="px-4 pt-4 pb-2">
         <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">At-Bat Controls</p>
         <div className="grid grid-cols-3 gap-2">
@@ -502,18 +505,19 @@ export function LineupPanel({
           </button>
         )}
       </div>
+      )}
 
       {/* ── Pitcher ─────────────────────────────────────────────────────── */}
       <div className="px-4 pt-1 pb-3">
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider">Pitchers</p>
-          {pitcherMode === 'idle' ? (
+          {!readOnly && (pitcherMode === 'idle' ? (
             <button onClick={openPitcherNew} className="text-blue-400 text-[18px] font-medium">
               + Change Pitcher
             </button>
           ) : (
             <button onClick={() => setPitcherMode('idle')} className="text-slate-500 text-[18px]">Cancel</button>
-          )}
+          ))}
         </div>
 
         {/* Current Pitcher display */}
@@ -530,17 +534,17 @@ export function LineupPanel({
               <span className="flex-1 font-medium text-[21px]">{pitcher.name || <span className="text-slate-500 italic">No pitcher set</span>}</span>
               <span className="text-slate-500 text-[18px]">{getPitchCount(pitcher.name, pitcher.number)} pitches</span>
               <span className="text-slate-600 text-[15px]">📊</span>
-              <button
+              {!readOnly && <button
                 onClick={e => { e.stopPropagation(); openPitcherEdit(); }}
                 className="text-slate-500 hover:text-blue-400 text-[17px] px-1.5 py-0.5 rounded hover:bg-slate-700 ml-1"
                 title="Fix name/number typo"
-              >✎</button>
+              >✎</button>}
             </div>
           </div>
         )}
 
         {/* New Pitcher / Edit form */}
-        {(pitcherMode === 'new' || pitcherMode === 'edit') && (
+        {!readOnly && (pitcherMode === 'new' || pitcherMode === 'edit') && (
           <div className="bg-slate-900 rounded-xl p-3 space-y-2 border border-slate-700">
             <p className="text-slate-400 text-[18px]">
               {pitcherMode === 'new' ? 'Enter incoming pitcher' : 'Edit current pitcher info'}
@@ -587,12 +591,12 @@ export function LineupPanel({
                 <span className="flex-1 text-slate-400 text-[21px]">{p.name}</span>
                 <span className="text-slate-600 text-[18px]">{getPitchCount(p.name, p.number)} pitches</span>
                 <span className="text-slate-600 text-[15px]">📊</span>
-                <button
+                {!readOnly && <button
                   onClick={e => { e.stopPropagation(); onChangePitcher(p); }}
                   className="text-blue-500 hover:text-blue-400 text-[18px] px-2 py-0.5 rounded border border-blue-900 hover:border-blue-700"
                 >
                   Recall
-                </button>
+                </button>}
               </div>
             ))}
           </div>
@@ -648,24 +652,24 @@ export function LineupPanel({
                       )}
 
                       {/* Edit button — corrects name/number, keeps player ID + history */}
-                      <button
+                      {!readOnly && <button
                         onClick={e => handleEditExistingClick(e, idx, player!)}
                         className={`text-[15px] px-1.5 py-0.5 rounded border transition-colors flex-shrink-0
                           ${isEditExisting
                             ? 'text-blue-400 bg-blue-950 border-blue-800'
                             : 'text-slate-500 hover:text-blue-400 hover:bg-blue-950 border-slate-700 hover:border-blue-800'}`}
                         title="Edit player name / number"
-                      >✎</button>
+                      >✎</button>}
 
                       {/* Sub button — opens fresh form for a new player */}
-                      <button
+                      {!readOnly && <button
                         onClick={e => handleSubClick(e, idx)}
                         className={`text-[15px] px-1.5 py-0.5 rounded border transition-colors flex-shrink-0
                           ${isEdit
                             ? 'text-amber-400 bg-amber-950 border-amber-800'
                             : 'text-slate-500 hover:text-amber-400 hover:bg-amber-950 border-slate-700 hover:border-amber-800'}`}
                         title="Substitute batter"
-                      >SUB</button>
+                      >SUB</button>}
 
                       <span className="text-slate-600 text-[15px] flex-shrink-0">{isDetails ? '▲' : '▼'}</span>
                     </>
@@ -737,7 +741,7 @@ export function LineupPanel({
                 })()}
 
                 {/* ── Sub / Add form ── */}
-                {isEdit && (
+                {!readOnly && isEdit && (
                   <div className="bg-slate-950 px-3 py-2.5">
                     {hasPlayer ? (
                       <p className="text-amber-400/80 text-[18px] mb-2 font-medium">
@@ -782,7 +786,7 @@ export function LineupPanel({
                 )}
 
                 {/* ── Edit existing player form ── */}
-                {isEditExisting && hasPlayer && player && (
+                {!readOnly && isEditExisting && hasPlayer && player && (
                   <div className="bg-slate-950 px-3 py-2.5">
                     <p className="text-blue-400/90 text-[18px] mb-2 font-medium">
                       Edit slot {idx + 1}
@@ -817,7 +821,7 @@ export function LineupPanel({
           })}
         </div>
 
-        {visibleSlots < MAX_SLOTS && (
+        {!readOnly && visibleSlots < MAX_SLOTS && (
           <button
             onClick={() => setExtraSlots(e => Math.min(e + 1, MAX_SLOTS - 9))}
             className="mt-2 w-full h-10 rounded-xl border border-dashed border-slate-600 text-slate-400 hover:border-blue-500 hover:text-blue-400 text-[21px] transition-colors"
@@ -828,12 +832,14 @@ export function LineupPanel({
       </div>
 
       {/* ── Google Sheets URL ── */}
+      {!readOnly && (
       <SheetsUrlPanel
         webhookUrl={state.sheetsWebhookUrl}
         syncQueue={state.syncQueue.length}
         onSave={onSetWebhookUrl}
         syncStatus={syncStatus}
       />
+      )}
 
     </div>
 
