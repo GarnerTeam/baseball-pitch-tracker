@@ -35,15 +35,14 @@ const HEADER_GROUPS = [
 ];
 
 /**
- * doGet — returns pitch history for a batter as JSON.
- * Called by the app's /api/sheets/history proxy.
+ * doGet — supports two actions:
  *
- * Query params:
- *   action  = "history" (required)
- *   batter  = batter name (case-insensitive)
- *   num     = batter jersey number
+ *   action=history  batter=<name>  num=<jersey>
+ *     Returns all pitches for that batter across all games.
  *
- * At least one of batter or num is required.
+ *   action=scout  [gameId=<id>]
+ *     Returns all pitches for the latest game (or a specific gameId).
+ *     Used by the read-only Scout view on a second device.
  */
 function doGet(e) {
   try {
@@ -59,11 +58,78 @@ function doGet(e) {
       return getBatterHistory(batterName, batterNum);
     }
 
+    if (action === 'scout') {
+      var gameId = (params.gameId || '').trim();
+      return getGameScout(gameId);
+    }
+
     return jsonOut({ error: 'Unknown action: ' + action });
   } catch (err) {
     Logger.log('doGet error: ' + err.toString());
     return jsonOut({ error: err.toString() });
   }
+}
+
+/**
+ * getGameScout — returns all pitch rows for one game.
+ * If gameId is provided, returns that game; otherwise returns the latest game
+ * (the game whose rows appear last in the sheet).
+ */
+function getGameScout(gameId) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet) return jsonOut({ error: 'No sheet named "Pitches"', pitches: [] });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ pitches: [], count: 0, gameId: '' });
+
+  var lastCol = sheet.getLastColumn();
+  var data    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+
+  // Header → camelCase key map
+  var headerToKey = {};
+  for (var k = 0; k < HEADERS.length; k++) {
+    headerToKey[HEADERS[k]] = COLUMNS[k];
+    headerToKey[COLUMNS[k]] = COLUMNS[k];
+  }
+
+  // Find gameId column index
+  var gameIdIdx = rawHeaders.indexOf('Game ID');
+  if (gameIdIdx === -1) gameIdIdx = rawHeaders.indexOf('gameId');
+  if (gameIdIdx === -1) return jsonOut({ error: 'Cannot find gameId column', pitches: [] });
+
+  // If no gameId specified, find the latest game (last non-empty gameId in the sheet)
+  var targetGameId = gameId;
+  if (!targetGameId) {
+    for (var r = data.length - 1; r >= 1; r--) {
+      var val = String(data[r][gameIdIdx] || '').trim();
+      if (val) { targetGameId = val; break; }
+    }
+  }
+  if (!targetGameId) return jsonOut({ pitches: [], count: 0, gameId: '' });
+
+  // Collect all rows for this game
+  var pitches = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var rowGameId = String(row[gameIdIdx] || '').trim();
+    if (rowGameId !== targetGameId) continue;
+
+    var obj = {};
+    for (var j = 0; j < rawHeaders.length; j++) {
+      var fieldKey = headerToKey[rawHeaders[j]] || rawHeaders[j];
+      var cell = row[j];
+      if (cell instanceof Date) {
+        obj[fieldKey] = Utilities.formatDate(cell, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
+      } else {
+        obj[fieldKey] = (cell === null || cell === undefined) ? '' : cell;
+      }
+    }
+    pitches.push(obj);
+  }
+
+  return jsonOut({ pitches: pitches, count: pitches.length, gameId: targetGameId });
 }
 
 function getBatterHistory(batterName, batterNum) {
@@ -76,12 +142,25 @@ function getBatterHistory(batterName, batterNum) {
 
   var lastCol = sheet.getLastColumn();
   var data    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  var headers = data[0].map(function (h) { return String(h).trim(); });
+  var rawHeaders = data[0].map(function (h) { return String(h).trim(); });
 
-  var nameIdx = headers.indexOf('batterName');
-  var numIdx  = headers.indexOf('batterNumber');
+  var headerToKey = {};
+  for (var k = 0; k < HEADERS.length; k++) {
+    headerToKey[HEADERS[k]]  = COLUMNS[k];
+    headerToKey[COLUMNS[k]]  = COLUMNS[k];
+  }
+
+  var nameIdx = rawHeaders.indexOf('Batter Name');
+  if (nameIdx === -1) nameIdx = rawHeaders.indexOf('batterName');
+
+  var numIdx = rawHeaders.indexOf('Batter #');
+  if (numIdx === -1) numIdx = rawHeaders.indexOf('batterNumber');
+
   if (nameIdx === -1 && numIdx === -1) {
-    return jsonOut({ error: 'batterName/batterNumber columns not found', pitches: [] });
+    return jsonOut({
+      error: 'Could not find batter columns. First 10 headers: ' + rawHeaders.slice(0, 10).join(', '),
+      pitches: []
+    });
   }
 
   var nameLower = batterName.toLowerCase();
@@ -89,7 +168,6 @@ function getBatterHistory(batterName, batterNum) {
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
-    // Skip blank rows
     if (!row[nameIdx] && !row[numIdx]) continue;
 
     var rowName = String(row[nameIdx] || '').toLowerCase().trim();
@@ -102,12 +180,13 @@ function getBatterHistory(batterName, batterNum) {
     if (!match) continue;
 
     var obj = {};
-    for (var j = 0; j < headers.length; j++) {
+    for (var j = 0; j < rawHeaders.length; j++) {
+      var fieldKey = headerToKey[rawHeaders[j]] || rawHeaders[j];
       var val = row[j];
       if (val instanceof Date) {
-        obj[headers[j]] = Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
+        obj[fieldKey] = Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
       } else {
-        obj[headers[j]] = (val === null || val === undefined) ? '' : val;
+        obj[fieldKey] = (val === null || val === undefined) ? '' : val;
       }
     }
     pitches.push(obj);
@@ -126,7 +205,6 @@ function doPost(e) {
   try {
     Logger.log('doPost called');
 
-    // ── Read body ───────────────────────────────────────────────────────────
     var raw = '';
     if (e && e.postData && e.postData.contents) {
       raw = e.postData.contents;
@@ -138,7 +216,6 @@ function doPost(e) {
       return ok({ count: 0, message: 'No postData received' });
     }
 
-    // ── Parse ───────────────────────────────────────────────────────────────
     var data;
     try {
       data = JSON.parse(raw);
@@ -155,7 +232,6 @@ function doPost(e) {
       return ok({ count: 0, message: 'Empty array received' });
     }
 
-    // ── Write to sheet ──────────────────────────────────────────────────────
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     Logger.log('Spreadsheet: ' + ss.getName());
 
