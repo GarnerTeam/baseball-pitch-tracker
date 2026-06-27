@@ -509,13 +509,12 @@ export function BatterHistoryModal({
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, types:{}, typeSwings:{}, typeMisses:{} };
-                            // Dominant pitch type → cell tint
-                            const domPT = topTypes(s.types, 1)[0]?.[0] ?? null;
-                            const cellBgColor = s.total > 0 && domPT ? (PT_BG[domPT] ?? '#0f172a') : '#0f172a';
+                            // Uniform dark cell background — PT info shown via colored text labels
+                            const cellBgColor = '#0f172a';
                             // Pitch type entries — scale font so they fit
                             const ptEntries  = topTypes(s.types, 4);
                             const ptCount    = ptEntries.length;
-                            const ptFontSize = ptCount <= 1 ? 20 : ptCount === 2 ? 18 : 15;
+                            const ptFontSize = ptCount <= 1 ? 16 : ptCount === 2 ? 14 : 12;
 
                             return (
                               <div

@@ -56,13 +56,17 @@ function PitchDot({ pitch, opacity }: { pitch: PitchRecord; opacity: number }) {
   );
 }
 
-function BatterIcon({ hand, selected, onClick }: { hand: 'L' | 'R'; selected: boolean; onClick: () => void }) {
+function BatterIcon({ hand, selected, noneSelected, onClick }: { hand: 'L' | 'R'; selected: boolean; noneSelected: boolean; onClick: () => void }) {
   const flip = hand === 'L';
+  // When neither hand is chosen: RHB blinks on-first, LHB blinks off-first
+  const blinkClass = noneSelected
+    ? (hand === 'R' ? 'hand-blink-on' : 'hand-blink-off')
+    : '';
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center gap-1 px-1 py-1 rounded-lg transition-all"
-      style={{ opacity: selected ? 1 : 0.2 }}
+      className={`flex flex-col items-center gap-1 px-1 py-1 rounded-lg transition-all ${blinkClass}`}
+      style={{ opacity: noneSelected ? undefined : selected ? 1 : 0.2 }}
     >
       <svg
         viewBox="0 0 28 50"
@@ -98,7 +102,7 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
 
       {/* Left column: RHB icon + Swing button (25% larger, amber accent) */}
       <div className="flex flex-col items-center gap-1.5">
-        <BatterIcon hand="R" selected={batterHand === 'R'} onClick={() => onSetBatterHand(batterHand === 'R' ? null : 'R')} />
+        <BatterIcon hand="R" selected={batterHand === 'R'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'R' ? null : 'R')} />
         <button
           onClick={() => onSetSwing('swing')}
           className={`w-[70px] py-2.5 rounded-xl text-[21px] font-black tracking-wide transition-all shadow-md ${
@@ -160,7 +164,7 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
 
       {/* Right column: LHB icon + Looking button (25% larger, blue accent) */}
       <div className="flex flex-col items-center gap-1.5">
-        <BatterIcon hand="L" selected={batterHand === 'L'} onClick={() => onSetBatterHand(batterHand === 'L' ? null : 'L')} />
+        <BatterIcon hand="L" selected={batterHand === 'L'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'L' ? null : 'L')} />
         <button
           onClick={() => onSetSwing('no-swing')}
           className={`w-[70px] py-2.5 rounded-xl text-[21px] font-black tracking-wide transition-all shadow-md ${

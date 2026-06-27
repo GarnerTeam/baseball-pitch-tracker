@@ -152,7 +152,7 @@ function BaseDiamond({
     <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-slate-800">
       <div className="flex items-center gap-3">
         <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Base</span>
-        <div className="relative w-14 h-14 flex items-center justify-center">
+        <div className="relative w-14 h-14 flex items-center justify-center base-remind">
           <div className="absolute top-0 left-1/2 -translate-x-1/2">{baseBtn('second', baseState.second)}</div>
           <div className="absolute left-0 top-1/2 -translate-y-1/2">{baseBtn('third', baseState.third)}</div>
           <div className="absolute right-0 top-1/2 -translate-y-1/2">{baseBtn('first', baseState.first)}</div>

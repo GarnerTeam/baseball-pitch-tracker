@@ -68,3 +68,22 @@ input {
   -webkit-appearance: none;
   background-clip: padding-box;
 }
+
+/* ── RHB/LHB alternating blink (fires when neither hand is selected) ── */
+@keyframes blink-on {
+  0%, 45%  { opacity: 1; }
+  55%, 100% { opacity: 0.12; }
+}
+@keyframes blink-off {
+  0%, 45%  { opacity: 0.12; }
+  55%, 100% { opacity: 1; }
+}
+.hand-blink-on  { animation: blink-on  0.9s ease-in-out infinite; }
+.hand-blink-off { animation: blink-off 0.9s ease-in-out infinite; }
+
+/* ── Base diamond pulse — reminds coach to check base situation ── */
+@keyframes base-remind {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+.base-remind { animation: base-remind 1.4s ease-in-out infinite; }
