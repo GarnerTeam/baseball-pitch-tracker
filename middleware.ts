@@ -10,6 +10,22 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
+  const { pathname } = new URL(req.url);
+  const host = req.headers.get('host') ?? '';
+
+  // If the request arrives on the scout subdomain but isn't already
+  // on /scout (or its API routes), redirect to /scout so the domain
+  // works without needing /scout in the shared URL.
+  if (
+    host.startsWith('scout.') &&
+    !pathname.startsWith('/scout') &&
+    !pathname.startsWith('/api/sheets/scout') &&
+    !pathname.startsWith('/api/sheets/history') &&
+    !pathname.startsWith('/_next')
+  ) {
+    return NextResponse.redirect(new URL('/scout', req.url));
+  }
+
   if (!isPublicRoute(req)) {
     const { userId } = await auth();
     if (!userId) {
