@@ -201,6 +201,16 @@ export function ScoutClient() {
   const [historyBatter, setHistoryBatter] = useState<{ name: string; number: string; pitches: PitchRowLite[] } | null>(null);
 
   useEffect(() => {
+    // 1. Honour ?url= query param — lets coaches share a pre-configured link
+    const params = new URLSearchParams(window.location.search);
+    const qUrl = params.get('url');
+    if (qUrl) {
+      localStorage.setItem(URL_KEY, qUrl);
+      setWebhookUrl(qUrl);
+      setUrlInput(qUrl);
+      return;
+    }
+    // 2. Fall back to whatever was saved last time on this device
     const saved = localStorage.getItem(URL_KEY);
     if (saved) { setWebhookUrl(saved); setUrlInput(saved); }
   }, []);
