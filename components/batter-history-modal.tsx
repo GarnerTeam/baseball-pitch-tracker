@@ -433,7 +433,12 @@ export function BatterHistoryModal({
         <div className="flex-1 min-w-0">
           <p className="text-white font-bold text-[20px] leading-tight truncate">#{playerNumber} {playerName}</p>
           <p className="text-slate-500 text-[13px]">
-            {loading ? 'Loading…' : `${totalPitches} pitches · ${uniqueGames} game${uniqueGames !== 1 ? 's' : ''} · ${gridHand}HB`}
+            {loading
+              ? 'Loading…'
+              : histPitches.length > 0
+                ? `${totalPitches} pitches · ${uniqueGames} game${uniqueGames !== 1 ? 's' : ''} · ${gridHand}HB`
+                : `${totalPitches} pitches (${currentGamePitches.length} today, 0 from sheet) · ${gridHand}HB`
+            }
           </p>
         </div>
         <div className="flex rounded-lg overflow-hidden border border-slate-700 flex-shrink-0">
