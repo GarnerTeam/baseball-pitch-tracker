@@ -608,7 +608,7 @@ export function BatterHistoryModal({
                             <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
                             <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff · {pitchHereZone.swingPct}% sw</p>
                             {bp && <p className="text-green-500 text-[13px] font-bold mt-0.5">Best: {bp}</p>}
-                            <p style={{ color: '#166534' }} className="text-[13px] mt-0.5">{pitchHereZone.total} pitches</p>
+                            <p className="text-green-500 text-[13px] mt-0.5">{pitchHereZone.total} pitches</p>
                           </>
                         );
                       })() : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
@@ -624,7 +624,7 @@ export function BatterHistoryModal({
                           {kPitchBestZone && ZONE_NAMES[kPitchBestZone] && (
                             <p className="text-violet-500 text-[13px] mt-0.5">Best spot: {ZONE_NAMES[kPitchBestZone]}</p>
                           )}
-                          <p style={{ color: '#3730a3' }} className="text-[13px] mt-0.5">{kPitchSwings[kPitchTop[0]] ?? 0} swings total</p>
+                          <p className="text-violet-400 text-[13px] mt-0.5">{kPitchSwings[kPitchTop[0]] ?? 0} swings total</p>
                         </>
                       ) : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
                     </div>
@@ -636,7 +636,7 @@ export function BatterHistoryModal({
                         <>
                           <p className="text-white font-black text-[22px] leading-none">{bestChaseDir.d}</p>
                           <p className="text-amber-300 text-[13px] font-semibold mt-0.5">{bestChaseDir.pct}% chase</p>
-                          <p style={{ color: '#78350f' }} className="text-[13px]">{dirChase[bestChaseDir.d as Dir].total} ball pitches</p>
+                          <p className="text-amber-400 text-[13px] mt-0.5">{dirChase[bestChaseDir.d as Dir].total} ball pitches</p>
                         </>
                       ) : <p className="text-amber-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
@@ -651,7 +651,7 @@ export function BatterHistoryModal({
                             <p className="text-white font-black text-[22px] leading-none">{dangerZone.name}</p>
                             <p className="text-red-300 text-[13px] font-semibold mt-0.5">{dangerZone.contactRate}% contact</p>
                             {bp && <p className="text-red-500 text-[13px] font-bold mt-0.5">Avoid: {bp}</p>}
-                            <p style={{ color: '#7f1d1d' }} className="text-[13px] mt-0.5">{dangerZone.contacts} contacts · {dangerZone.total} pitches</p>
+                            <p className="text-red-500 text-[13px] mt-0.5">{dangerZone.contacts} contacts · {dangerZone.total} pitches</p>
                           </>
                         );
                       })() : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
@@ -661,7 +661,8 @@ export function BatterHistoryModal({
                   {/* Where He Does Damage — 3×3 strike zone (in-play counts) */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                     <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2.5 text-center">Where He Does Damage</p>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="rounded-lg border border-slate-600 overflow-hidden">
+                      <div className="grid grid-cols-3" style={{ gap: 0 }}>
                       {[1,2,3,4,5,6,7,8,9].map(n => {
                         const zk = `Z${n}`;
                         const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number> };
@@ -669,26 +670,30 @@ export function BatterHistoryModal({
                         const conf = ip === 0 ? 0 : ip === 1 ? 0.30 : ip === 2 ? 0.50 : ip === 3 ? 0.70 : 0.90;
                         const bg = ip > 0 ? `rgba(234,179,8,${conf})` : '#0f172a';
                         const topType = Object.entries(s.types).sort((a,b) => b[1]-a[1])[0];
+                        const isRightCol = n % 3 === 0;
+                        const isBottomRow = n > 6;
                         return (
                           <div key={zk}
-                            className="rounded-sm flex flex-col items-center justify-center select-none"
-                            style={{ background: bg, aspectRatio:'1', minHeight: 54,
-                              border: ip > 0 ? '1px solid rgba(234,179,8,0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
+                            className="flex flex-col items-center justify-center select-none"
+                            style={{ background: bg, aspectRatio:'1', minHeight: 58,
+                              borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.3)',
+                              borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.3)' }}>
                             {ip > 0 ? (
                               <>
                                 <span className="text-white font-black leading-none" style={{ fontSize: 22 }}>{ip}</span>
                                 {topType && (
-                                  <span className="font-bold leading-none mt-0.5" style={{ fontSize: 11, color: PT_COLOR[topType[0]] ?? '#94a3b8' }}>
+                                  <span className="font-bold leading-none mt-0.5" style={{ fontSize: 13, color: PT_COLOR[topType[0]] ?? '#94a3b8' }}>
                                     {PT_LABEL[topType[0]] ?? topType[0]}
                                   </span>
                                 )}
                               </>
                             ) : (
-                              <span style={{ fontSize: 14, color: 'rgba(100,116,139,0.15)' }}>·</span>
+                              <span style={{ fontSize: 14, color: 'rgba(100,116,139,0.2)' }}>·</span>
                             )}
                           </div>
                         );
                       })}
+                      </div>
                     </div>
                     <p className="text-slate-700 text-[10px] text-center mt-2">balls put in play per zone · gold = damage</p>
                   </div>
