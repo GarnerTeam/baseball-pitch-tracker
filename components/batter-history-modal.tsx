@@ -705,53 +705,51 @@ export function BatterHistoryModal({
                         const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, typeInPlay:{} as Record<string,number>, results:{} as Record<string,number> };
                         const DAMAGE_RESULTS = ['single','double','triple','home-run','error'];
                         const dmg = DAMAGE_RESULTS.reduce((sum, r) => sum + (s.results[r] ?? 0), 0);
-                        const borderAlpha = dmg === 0 ? 0 : dmg === 1 ? 0.45 : dmg === 2 ? 0.65 : dmg === 3 ? 0.82 : 1.0;
-                        const zoneName = ZONE_NAMES[zk] ?? zk;
+                        const borderAlpha = dmg === 0 ? 0 : dmg === 1 ? 0.35 : dmg === 2 ? 0.6 : dmg === 3 ? 0.85 : 1.0;
                         const isRightCol = n % 3 === 0;
                         const isBottomRow = n > 6;
+                        const inPlayTypes = topTypes(s.typeInPlay ?? {}, 4);
+                        const dmgResults = DAMAGE_RESULTS.filter(r => (s.results[r] ?? 0) > 0);
                         return (
                           <div key={zk}
-                            className="flex flex-col items-center justify-center select-none px-1.5 py-3 gap-1"
+                            className="flex flex-col items-center justify-center select-none"
                             style={{
-                              background: dmg > 0 ? '#1a1000' : '#0a0f1a',
-                              minHeight: 96,
+                              background: dmg > 0 ? '#1c1100' : '#090d18',
+                              minHeight: 108,
+                              padding: '8px 4px',
+                              gap: 4,
                               outline: dmg > 0 ? `2px solid rgba(234,179,8,${borderAlpha})` : 'none',
                               outlineOffset: '-2px',
-                              borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.22)',
-                              borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.22)',
+                              borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.18)',
+                              borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.18)',
                             }}>
-                            {/* Zone label — always visible for spatial context */}
-                            <span className="font-semibold leading-none" style={{ fontSize: 10, color: dmg > 0 ? 'rgba(234,179,8,0.7)' : 'rgba(100,116,139,0.35)' }}>
-                              {zoneName}
-                            </span>
                             {dmg > 0 ? (
                               <>
-                                {/* Damage count — big and clear */}
-                                <span className="text-white font-black leading-none" style={{ fontSize: 38 }}>{dmg}</span>
-                                {/* Result breakdown — outs excluded */}
-                                <div className="flex flex-wrap items-center justify-center" style={{ gap: '2px 5px' }}>
-                                  {DAMAGE_RESULTS
-                                    .filter(r => (s.results[r] ?? 0) > 0)
-                                    .map(r => (
-                                      <span key={r} className="font-black leading-none" style={{ fontSize: 14, color: RES_COLOR[r] ?? '#94a3b8' }}>
-                                        {RES_LABEL[r]}{s.results[r] > 1 ? `×${s.results[r]}` : ''}
+                                {/* Damage count */}
+                                <span className="text-white font-black leading-none" style={{ fontSize: 46 }}>{dmg}</span>
+                                {/* Pitch types put in play — pitched colored */}
+                                {inPlayTypes.length > 0 && (
+                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 5px' }}>
+                                    {inPlayTypes.map(([t, c]) => (
+                                      <span key={t} className="font-black leading-none" style={{ fontSize: 14, color: PT_COLOR[t] ?? '#94a3b8' }}>
+                                        {PT_LABEL[t] ?? t}{c > 1 ? `×${c}` : ''}
                                       </span>
-                                    ))
-                                  }
-                                </div>
-                                {/* Pitch types put in play in this zone */}
-                                {Object.keys(s.typeInPlay ?? {}).length > 0 && (
-                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 4px', marginTop: 2 }}>
-                                    {topTypes(s.typeInPlay, 4).map(([t, n]) => (
-                                      <span key={t} className="font-black leading-none" style={{ fontSize: 12, color: PT_COLOR[t] ?? '#94a3b8' }}>
-                                        {PT_LABEL[t] ?? t}{n > 1 ? `×${n}` : ''}
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Hit results */}
+                                {dmgResults.length > 0 && (
+                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 4px' }}>
+                                    {dmgResults.map(r => (
+                                      <span key={r} className="font-bold leading-none" style={{ fontSize: 13, color: RES_COLOR[r] ?? '#94a3b8' }}>
+                                        {RES_LABEL[r]}{(s.results[r] ?? 0) > 1 ? `×${s.results[r]}` : ''}
                                       </span>
                                     ))}
                                   </div>
                                 )}
                               </>
                             ) : (
-                              <span style={{ fontSize: 20, color: 'rgba(100,116,139,0.15)' }}>·</span>
+                              <span style={{ fontSize: 16, color: 'rgba(100,116,139,0.08)' }}>·</span>
                             )}
                           </div>
                         );
