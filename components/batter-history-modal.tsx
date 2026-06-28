@@ -25,6 +25,7 @@ interface CellStat {
   types:      Record<string, number>;
   typeSwings: Record<string, number>;
   typeMisses: Record<string, number>;
+  typeInPlay: Record<string, number>; // pitch types put in play per zone
   results:    Record<string, number>; // hit results per zone: single/double/triple/home-run/out/error
 }
 
@@ -267,7 +268,7 @@ export function BatterHistoryModal({
     const pitchHand = (p.batterHand === 'L' || p.batterHand === 'R') ? p.batterHand : gridHand;
     const loc = normalizeLocation(rawLoc, pitchHand);
 
-    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, results: {} };
+    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, results: {} };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
     const isInPlay  = isSwing && p.outcome === 'in-play';
@@ -280,6 +281,7 @@ export function BatterHistoryModal({
     if (isContact)   locStats[loc].contacts++;
     if (isInPlay) {
       locStats[loc].inPlay++;
+      locStats[loc].typeInPlay[pt] = (locStats[loc].typeInPlay[pt] ?? 0) + 1;
       const hr = (p.hitResult ?? '').trim();
       if (hr) locStats[loc].results[hr] = (locStats[loc].results[hr] ?? 0) + 1;
     }
@@ -290,7 +292,7 @@ export function BatterHistoryModal({
   // ── Quick-read (strike zone only, min 2 pitches) ──────────────────────────
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
-      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, results: {} };
+      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, results: {} };
       const misses = s.swings - s.contacts;
       return {
         zone: z, name: ZONE_NAMES[z], ...s,
@@ -528,7 +530,7 @@ export function BatterHistoryModal({
                           Array.from({ length: 5 }).map((_, col) => {
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
-                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{} }) : { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{} };
+                            const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{}, typeInPlay:{} }) : { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{}, typeInPlay:{} };
                             // ── Swing / Take / In-Play heat map ──────────────
                             // Confidence fades from 0.25 (1 pitch) → 0.85 (4+ pitches)
                             const confidence = s.total === 0 ? 0
@@ -700,7 +702,7 @@ export function BatterHistoryModal({
                       <div className="grid grid-cols-3" style={{ gap: 0 }}>
                       {[1,2,3,4,5,6,7,8,9].map(n => {
                         const zk = `Z${n}`;
-                        const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, results:{} as Record<string,number> };
+                        const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, typeInPlay:{} as Record<string,number>, results:{} as Record<string,number> };
                         const DAMAGE_RESULTS = ['single','double','triple','home-run','error'];
                         const dmg = DAMAGE_RESULTS.reduce((sum, r) => sum + (s.results[r] ?? 0), 0);
                         const borderAlpha = dmg === 0 ? 0 : dmg === 1 ? 0.45 : dmg === 2 ? 0.65 : dmg === 3 ? 0.82 : 1.0;
@@ -737,6 +739,16 @@ export function BatterHistoryModal({
                                     ))
                                   }
                                 </div>
+                                {/* Pitch types put in play in this zone */}
+                                {Object.keys(s.typeInPlay ?? {}).length > 0 && (
+                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 4px', marginTop: 2 }}>
+                                    {topTypes(s.typeInPlay, 4).map(([t, n]) => (
+                                      <span key={t} className="font-black leading-none" style={{ fontSize: 12, color: PT_COLOR[t] ?? '#94a3b8' }}>
+                                        {PT_LABEL[t] ?? t}{n > 1 ? `×${n}` : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </>
                             ) : (
                               <span style={{ fontSize: 20, color: 'rgba(100,116,139,0.15)' }}>·</span>
