@@ -687,33 +687,38 @@ export function BatterHistoryModal({
                         const zk = `Z${n}`;
                         const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, results:{} as Record<string,number> };
                         const ip = s.inPlay;
-                        const conf = ip === 0 ? 0 : ip === 1 ? 0.30 : ip === 2 ? 0.50 : ip === 3 ? 0.70 : 0.90;
-                        const bg = ip > 0 ? `rgba(234,179,8,${conf})` : '#0f172a';
+                        // Border brightness scales with how much damage — dark bg always for legibility
+                        const borderAlpha = ip === 0 ? 0.12 : ip === 1 ? 0.45 : ip === 2 ? 0.65 : ip === 3 ? 0.82 : 1.0;
                         const topType = Object.entries(s.types).sort((a,b) => b[1]-a[1])[0];
                         const isRightCol = n % 3 === 0;
                         const isBottomRow = n > 6;
                         return (
                           <div key={zk}
-                            className="flex flex-col items-center justify-center select-none px-1 py-1.5"
-                            style={{ background: bg, aspectRatio:'1', minHeight: 72,
-                              borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.3)',
-                              borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.3)' }}>
+                            className="flex flex-col items-center justify-center select-none px-1 py-2"
+                            style={{
+                              background: ip > 0 ? '#1a1000' : '#0a0f1a',
+                              aspectRatio: '1', minHeight: 80,
+                              outline: ip > 0 ? `2px solid rgba(234,179,8,${borderAlpha})` : 'none',
+                              outlineOffset: '-2px',
+                              borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.25)',
+                              borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.25)',
+                            }}>
                             {ip > 0 ? (
                               <>
                                 {/* In-play count */}
-                                <span className="text-white font-black leading-none" style={{ fontSize: 26 }}>{ip}</span>
-                                {/* Top pitch type thrown here */}
+                                <span className="text-white font-black leading-none" style={{ fontSize: 30 }}>{ip}</span>
+                                {/* Top pitch type */}
                                 {topType && (
-                                  <span className="font-black leading-none mt-0.5" style={{ fontSize: 13, color: PT_COLOR[topType[0]] ?? '#94a3b8' }}>
+                                  <span className="font-black leading-none mt-1" style={{ fontSize: 15, color: PT_COLOR[topType[0]] ?? '#94a3b8' }}>
                                     {PT_LABEL[topType[0]] ?? topType[0]}
                                   </span>
                                 )}
                                 {/* Hit result breakdown */}
-                                <div className="flex flex-wrap items-center justify-center mt-1" style={{ gap: '1px 3px' }}>
+                                <div className="flex flex-wrap items-center justify-center mt-1" style={{ gap: '2px 4px' }}>
                                   {RES_ORDER
                                     .filter(r => (s.results[r] ?? 0) > 0)
                                     .map(r => (
-                                      <span key={r} className="font-black leading-none" style={{ fontSize: 12, color: RES_COLOR[r] ?? '#94a3b8' }}>
+                                      <span key={r} className="font-black leading-none" style={{ fontSize: 13, color: RES_COLOR[r] ?? '#94a3b8' }}>
                                         {RES_LABEL[r]}{s.results[r] > 1 ? `×${s.results[r]}` : ''}
                                       </span>
                                     ))
@@ -721,7 +726,7 @@ export function BatterHistoryModal({
                                 </div>
                               </>
                             ) : (
-                              <span style={{ fontSize: 14, color: 'rgba(100,116,139,0.2)' }}>·</span>
+                              <span style={{ fontSize: 16, color: 'rgba(100,116,139,0.18)' }}>·</span>
                             )}
                           </div>
                         );
