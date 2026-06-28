@@ -470,8 +470,8 @@ export function BatterHistoryModal({
                 { label: 'Pitches',   value: totalPitches },
               ].map(({ label, value }) => (
                 <div key={label} className="py-3 text-center border-r border-slate-800 last:border-r-0">
-                  <p className="text-white font-black text-[20px] leading-none">{value}</p>
-                  <p className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wide">{label}</p>
+                  <p className="text-white font-black text-[23px] leading-none">{value}</p>
+                  <p className="text-slate-500 text-[12px] mt-0.5 uppercase tracking-wide">{label}</p>
                 </div>
               ))}
             </div>
@@ -499,7 +499,7 @@ export function BatterHistoryModal({
 
                       {/* Legend */}
                       <div className="flex items-center justify-center gap-3 mb-1.5">
-                        {([['rgba(59,130,246,0.85)','Takes'],['rgba(239,68,68,0.85)','Swings'],['rgba(234,179,8,0.85)','In Play']] as [string,string][]).map(([c,l]) => (
+                        {([['rgba(59,130,246,0.85)','Takes'],['rgba(127,29,29,0.85)','Swings'],['rgba(234,179,8,0.85)','In Play']] as [string,string][]).map(([c,l]) => (
                           <div key={l} className="flex items-center gap-1.5">
                             <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ background: c }} />
                             <span className="text-slate-300 font-semibold" style={{ fontSize: 13 }}>{l}</span>
@@ -607,8 +607,8 @@ export function BatterHistoryModal({
                           <>
                             <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
                             <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff · {pitchHereZone.swingPct}% sw</p>
-                            {bp && <p className="text-green-500 text-[11px] font-bold mt-0.5">Best: {bp}</p>}
-                            <p style={{ color: '#166534' }} className="text-[10px] mt-0.5">{pitchHereZone.total} pitches</p>
+                            {bp && <p className="text-green-500 text-[13px] font-bold mt-0.5">Best: {bp}</p>}
+                            <p style={{ color: '#166534' }} className="text-[13px] mt-0.5">{pitchHereZone.total} pitches</p>
                           </>
                         );
                       })() : <p className="text-green-900 text-[13px] mt-1">Not enough data</p>}
@@ -622,9 +622,9 @@ export function BatterHistoryModal({
                           <p className="text-white font-black text-[28px] leading-none">{kPitchTop[0]}</p>
                           <p className="text-violet-300 text-[13px] font-semibold mt-0.5">{kPitchTop[1]} whiffs · {kPitchMissPct}% miss/sw</p>
                           {kPitchBestZone && ZONE_NAMES[kPitchBestZone] && (
-                            <p className="text-violet-500 text-[11px] mt-0.5">Best spot: {ZONE_NAMES[kPitchBestZone]}</p>
+                            <p className="text-violet-500 text-[13px] mt-0.5">Best spot: {ZONE_NAMES[kPitchBestZone]}</p>
                           )}
-                          <p style={{ color: '#3730a3' }} className="text-[10px] mt-0.5">{kPitchSwings[kPitchTop[0]] ?? 0} swings total</p>
+                          <p style={{ color: '#3730a3' }} className="text-[13px] mt-0.5">{kPitchSwings[kPitchTop[0]] ?? 0} swings total</p>
                         </>
                       ) : <p className="text-violet-900 text-[13px] mt-1">Not enough swings</p>}
                     </div>
@@ -636,7 +636,7 @@ export function BatterHistoryModal({
                         <>
                           <p className="text-white font-black text-[22px] leading-none">{bestChaseDir.d}</p>
                           <p className="text-amber-300 text-[13px] font-semibold mt-0.5">{bestChaseDir.pct}% chase</p>
-                          <p style={{ color: '#78350f' }} className="text-[11px]">{dirChase[bestChaseDir.d as Dir].total} ball pitches</p>
+                          <p style={{ color: '#78350f' }} className="text-[13px]">{dirChase[bestChaseDir.d as Dir].total} ball pitches</p>
                         </>
                       ) : <p className="text-amber-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
@@ -650,52 +650,47 @@ export function BatterHistoryModal({
                           <>
                             <p className="text-white font-black text-[22px] leading-none">{dangerZone.name}</p>
                             <p className="text-red-300 text-[13px] font-semibold mt-0.5">{dangerZone.contactRate}% contact</p>
-                            {bp && <p className="text-red-500 text-[11px] font-bold mt-0.5">Avoid: {bp}</p>}
-                            <p style={{ color: '#7f1d1d' }} className="text-[10px] mt-0.5">{dangerZone.contacts} contacts · {dangerZone.total} pitches</p>
+                            {bp && <p className="text-red-500 text-[13px] font-bold mt-0.5">Avoid: {bp}</p>}
+                            <p style={{ color: '#7f1d1d' }} className="text-[13px] mt-0.5">{dangerZone.contacts} contacts · {dangerZone.total} pitches</p>
                           </>
                         );
                       })() : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
                   </div>
 
-                  {/* Where He Does Damage — 2×2 card grid */}
+                  {/* Where He Does Damage — 3×3 strike zone (in-play counts) */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                     <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2.5 text-center">Where He Does Damage</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['High','Low','In','Out'] as Dir[]).map(dir => {
-                        const { hits, inPlay } = hitDirs[dir];
-                        const hitPct = inPlay >= 2 ? Math.round(hits / inPlay * 100) : null;
-                        const hot = hits >= 2;
-                        const arrows: Record<Dir, string> = { High:'↑', Low:'↓', In:'◀', Out:'▶' };
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1,2,3,4,5,6,7,8,9].map(n => {
+                        const zk = `Z${n}`;
+                        const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number> };
+                        const ip = s.inPlay;
+                        const conf = ip === 0 ? 0 : ip === 1 ? 0.30 : ip === 2 ? 0.50 : ip === 3 ? 0.70 : 0.90;
+                        const bg = ip > 0 ? `rgba(234,179,8,${conf})` : '#0f172a';
+                        const topType = Object.entries(s.types).sort((a,b) => b[1]-a[1])[0];
                         return (
-                          <div
-                            key={dir}
-                            className="rounded-xl p-3 border text-center"
-                            style={{
-                              background:   hot ? '#1c0505' : '#0f172a',
-                              borderColor:  hot ? '#b91c1c' : '#1e293b',
-                            }}
-                          >
-                            <p className="font-bold text-[11px] uppercase tracking-wide mb-1"
-                               style={{ color: hot ? '#f87171' : '#475569' }}>
-                              {arrows[dir]} {dir}
-                            </p>
-                            <p className="font-black leading-none"
-                               style={{ fontSize: 36, color: hot ? '#fca5a5' : '#334155' }}>
-                              {hits}
-                            </p>
-                            <p className="font-semibold mt-1" style={{ fontSize: 12, color: hot ? '#ef4444' : '#334155' }}>
-                              {hitPct !== null
-                                ? `${hitPct}% BA`
-                                : inPlay > 0
-                                  ? `${inPlay} AB · 0 H`
-                                  : 'No AB'}
-                            </p>
+                          <div key={zk}
+                            className="rounded-sm flex flex-col items-center justify-center select-none"
+                            style={{ background: bg, aspectRatio:'1', minHeight: 54,
+                              border: ip > 0 ? '1px solid rgba(234,179,8,0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
+                            {ip > 0 ? (
+                              <>
+                                <span className="text-white font-black leading-none" style={{ fontSize: 22 }}>{ip}</span>
+                                {topType && (
+                                  <span className="font-bold leading-none mt-0.5" style={{ fontSize: 11, color: PT_COLOR[topType[0]] ?? '#94a3b8' }}>
+                                    {PT_LABEL[topType[0]] ?? topType[0]}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span style={{ fontSize: 14, color: 'rgba(100,116,139,0.15)' }}>·</span>
+                            )}
                           </div>
                         );
                       })}
                     </div>
-                    <p className="text-slate-700 text-[10px] text-center mt-2">base hits or better · red = 2+ hits</p>
+                    <p className="text-slate-700 text-[10px] text-center mt-2">balls put in play per zone · gold = damage</p>
                   </div>
                 </div>
 
