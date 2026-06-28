@@ -603,10 +603,20 @@ export function BatterHistoryModal({
                       <p className="text-green-400 text-[11px] font-bold uppercase tracking-wide mb-1">🎯 Pitch Here</p>
                       {pitchHereZone ? (() => {
                         const bp = bestPitch(locStats[pitchHereZone.zone]?.typeMisses ?? {});
+                        // Attack Score: whiff weighted 2x (closes ABs) + swing (he bites)
+                        // Scale 0-100. ≥50 = go here. 30-49 = solid. <30 = marginal.
+                        const attackScore = Math.round((pitchHereZone.whiffRate * 2 + pitchHereZone.swingPct) / 3);
+                        const scoreColor  = attackScore >= 50 ? '#4ade80' : attackScore >= 30 ? '#fbbf24' : '#94a3b8';
                         return (
                           <>
                             <p className="text-white font-black text-[22px] leading-none">{pitchHereZone.name}</p>
-                            <p className="text-green-300 text-[13px] font-semibold mt-0.5">{pitchHereZone.whiffRate}% whiff · {pitchHereZone.swingPct}% sw</p>
+                            {/* Attack Score — single game-time decision number */}
+                            <div className="flex items-baseline gap-1.5 mt-1 mb-0.5">
+                              <span className="text-slate-500 text-[10px] uppercase tracking-widest font-semibold">Attack</span>
+                              <span className="font-black leading-none" style={{ fontSize: 28, color: scoreColor }}>{attackScore}</span>
+                              <span className="text-slate-500 text-[10px]">/100</span>
+                            </div>
+                            <p className="text-green-300 text-[13px] font-semibold">{pitchHereZone.whiffRate}% whiff · {pitchHereZone.swingPct}% sw</p>
                             {bp && <p className="text-green-500 text-[13px] font-bold mt-0.5">Best: {bp}</p>}
                             <p className="text-green-500 text-[13px] mt-0.5">{pitchHereZone.total} pitches</p>
                           </>
