@@ -821,6 +821,9 @@ export function LineupPanel({
                             <span className={`text-[18px] font-bold ${getResultColor(ab)}`}>{getResultBadge(ab)}</span>
                           </div>
                           <div className="space-y-1.5">
+                            {!readOnly && ab.pitches.length > 0 && (
+                              <p className="text-slate-600 text-[13px] text-right pr-1">tap ✎ to edit a pitch</p>
+                            )}
                             {ab.pitches.map((pitch, i) => (
                               <div key={pitch.id} className="relative group">
                                 <PitchRow
@@ -843,10 +846,10 @@ export function LineupPanel({
                                         });
                                       }
                                     }}
-                                    className={`absolute top-1 right-1 text-[13px] px-1.5 py-0.5 rounded border transition-colors ${
+                                    className={`absolute top-1 right-1 text-[15px] px-2 py-0.5 rounded border transition-colors min-w-[32px] text-center ${
                                       editingPitch?.pitchId === pitch.id
-                                        ? 'text-blue-300 bg-blue-950 border-blue-700'
-                                        : 'text-slate-600 bg-transparent border-transparent hover:text-blue-400 hover:border-slate-600'
+                                        ? 'text-blue-300 bg-blue-950 border-blue-600'
+                                        : 'text-slate-400 bg-slate-800 border-slate-600 active:bg-slate-700'
                                     }`}
                                     title="Edit this pitch"
                                   >
