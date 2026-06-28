@@ -497,19 +497,12 @@ export function BatterHistoryModal({
                     {/* Grid column: top axis + cells + bottom axis */}
                     <div className="flex-1 min-w-0">
 
-                      {/* Top axis */}
-                      <div className="grid mb-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
-                        {[gridHand === 'R' ? 'In' : 'Out', '', 'High', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
-                          <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
-                        ))}
-                      </div>
-
                       {/* Legend */}
                       <div className="flex items-center justify-center gap-3 mb-1.5">
                         {([['rgba(59,130,246,0.85)','Takes'],['rgba(239,68,68,0.85)','Swings'],['rgba(234,179,8,0.85)','In Play']] as [string,string][]).map(([c,l]) => (
-                          <div key={l} className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: c }} />
-                            <span className="text-slate-400 font-medium" style={{ fontSize: 10 }}>{l}</span>
+                          <div key={l} className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ background: c }} />
+                            <span className="text-slate-300 font-semibold" style={{ fontSize: 13 }}>{l}</span>
                           </div>
                         ))}
                       </div>
@@ -582,12 +575,7 @@ export function BatterHistoryModal({
                         )}
                       </div>
 
-                      {/* Bottom axis */}
-                      <div className="grid mt-0.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
-                        {[gridHand === 'R' ? 'In' : 'Out', '', 'Low', '', gridHand === 'R' ? 'Out' : 'In'].map((l, i) => (
-                          <p key={i} className="text-center text-slate-600 font-semibold leading-none" style={{ fontSize: 10 }}>{l}</p>
-                        ))}
-                      </div>
+
 
                     </div>{/* end grid column */}
 
@@ -600,13 +588,7 @@ export function BatterHistoryModal({
 
                   </div>{/* end grid + bat wrapper */}
 
-                  {/* Legend */}
-                  <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{background:'#1e3a8a'}} /><span className="text-slate-500 text-[11px]">Takes (&lt;20%)</span></div>
-                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{background:'#a16207'}} /><span className="text-slate-500 text-[11px]">40–55%</span></div>
-                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{background:'#b91c1c'}} /><span className="text-slate-500 text-[11px]">Attacks (&gt;75%)</span></div>
-                  </div>
-                  <p className="text-center text-slate-700 text-[10px] mt-1.5">outlined = strike zone · outer = ball zone</p>
+
                 </div>
 
                 {/* ── GAME PLAN ── */}
