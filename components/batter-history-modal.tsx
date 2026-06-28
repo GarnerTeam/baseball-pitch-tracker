@@ -681,7 +681,17 @@ export function BatterHistoryModal({
                   {/* Where He Does Damage — 3×3 strike zone (in-play counts) */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                     <p className="text-slate-500 text-[11px] uppercase tracking-widest mb-2.5 text-center">Where He Does Damage</p>
-                    <div className="rounded-lg border border-slate-600 overflow-hidden">
+                    <div className="flex items-stretch gap-1.5">
+
+                      {/* RHB bat — left side */}
+                      {gridHand === 'R' && (
+                        <div className="flex items-stretch">
+                          <BatSVG />
+                        </div>
+                      )}
+
+                      {/* 3×3 strike zone grid */}
+                      <div className="flex-1 rounded-lg border border-slate-600 overflow-hidden">
                       <div className="grid grid-cols-3" style={{ gap: 0 }}>
                       {[1,2,3,4,5,6,7,8,9].map(n => {
                         const zk = `Z${n}`;
@@ -734,7 +744,16 @@ export function BatterHistoryModal({
                         );
                       })}
                       </div>
-                    </div>
+                      </div>{/* end 3×3 grid */}
+
+                      {/* LHB bat — right side */}
+                      {gridHand === 'L' && (
+                        <div className="flex items-stretch">
+                          <BatSVG />
+                        </div>
+                      )}
+
+                    </div>{/* end bat + grid wrapper */}
                     <p className="text-slate-700 text-[10px] text-center mt-2">balls put in play per zone · gold = damage</p>
                   </div>
                 </div>
