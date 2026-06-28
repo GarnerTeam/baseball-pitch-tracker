@@ -99,6 +99,8 @@ function flattenPitch(p: PitchRecord) {
     baseState:       baseStateLabel(p.baseState),
     homeTeam:        p.homeTeam        ?? '',
     visitingTeam:    p.visitingTeam    ?? '',
+    id:              p.id,
+    isEdit:          p.isEdit          ?? false,
   };
 }
 

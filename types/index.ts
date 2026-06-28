@@ -71,6 +71,7 @@ export interface PitchRecord {
   outsCount?: 0 | 1 | 2;
   homeTeam?: string;
   visitingTeam?: string;
+  isEdit?: boolean;   // true when this pitch was edited post-recording and needs a sheet row update
 }
 
 export interface AtBat {

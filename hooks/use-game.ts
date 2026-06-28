@@ -446,23 +446,38 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'EDIT_PITCH': {
       const { atBatId, pitchId, updates } = action as any;
+      let editedPitch: PitchRecord | null = null;
+
       // Check current at-bat first
       if (state.currentAtBat && state.currentAtBat.id === atBatId) {
         const cab = state.currentAtBat;
-        const newPitches = cab.pitches.map((p: PitchRecord) =>
-          p.id === pitchId ? { ...p, ...updates } : p
-        );
-        return { ...state, currentAtBat: { ...cab, pitches: newPitches } };
+        const newPitches: PitchRecord[] = cab.pitches.map((p: PitchRecord) => {
+          if (p.id !== pitchId) return p;
+          const ep: PitchRecord = { ...p, ...updates };
+          editedPitch = ep;
+          return ep;
+        });
+        const newSyncQueue = (editedPitch && state.sheetsWebhookUrl)
+          ? [...state.syncQueue, { ...(editedPitch as PitchRecord), isEdit: true }]
+          : state.syncQueue;
+        return { ...state, currentAtBat: { ...cab, pitches: newPitches }, syncQueue: newSyncQueue };
       }
+
       // Update completed at-bats
-      const newAllAtBats = state.allAtBats.map((ab: AtBat) => {
+      const newAllAtBats: AtBat[] = state.allAtBats.map((ab: AtBat) => {
         if (ab.id !== atBatId) return ab;
-        const newPitches = ab.pitches.map((p: PitchRecord) =>
-          p.id === pitchId ? { ...p, ...updates } : p
-        );
+        const newPitches: PitchRecord[] = ab.pitches.map((p: PitchRecord) => {
+          if (p.id !== pitchId) return p;
+          const ep: PitchRecord = { ...p, ...updates };
+          editedPitch = ep;
+          return ep;
+        });
         return { ...ab, pitches: newPitches };
       });
-      return { ...state, allAtBats: newAllAtBats };
+      const newSyncQueue2 = (editedPitch && state.sheetsWebhookUrl)
+        ? [...state.syncQueue, { ...(editedPitch as PitchRecord), isEdit: true }]
+        : state.syncQueue;
+      return { ...state, allAtBats: newAllAtBats, syncQueue: newSyncQueue2 };
     }
 
     case 'PREV_BATTER': {
