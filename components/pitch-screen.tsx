@@ -47,8 +47,8 @@ const OUTCOME_COLORS: Record<string, string> = {
   'swinging-strike': 'text-red-400',
   foul: 'text-amber-400',
   'foul-tip': 'text-amber-400',
-  'in-play': 'text-green-400',
-  walk: 'text-blue-300',
+  'in-play': 'text-yellow-400',
+  walk: 'text-sky-400',
   strikeout: 'text-red-500',
 };
 const HIT_TYPE_ICONS: Record<string, string> = {
@@ -82,16 +82,16 @@ function getResultBadge(ab: AtBat): React.ReactNode {
     const last = ab.pitches[ab.pitches.length - 1];
     return <>🔴 <KLabel swing={last ? last.swing : true} /></>;
   }
-  const m: Record<string, string> = { walk: '🟢 BB', 'manual-end': '—' };
+  const m: Record<string, string> = { walk: '🔵 BB', 'manual-end': '—' };
   return m[ab.result ?? ''] ?? '—';
 }
 
 function getResultColor(ab: AtBat): string {
   if (ab.result === 'strikeout') return 'text-red-400';
-  if (ab.result === 'walk') return 'text-blue-300';
+  if (ab.result === 'walk') return 'text-sky-400';
   if (ab.result === 'in-play') {
     const r = ab.pitches.find(p => p.hitData)?.hitData?.result;
-    return r === 'out' || r === 'error' ? 'text-red-400' : 'text-green-400';
+    return r === 'out' || r === 'error' ? 'text-slate-400' : 'text-yellow-400';
   }
   return 'text-slate-400';
 }

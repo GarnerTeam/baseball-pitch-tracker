@@ -9,11 +9,11 @@ const HIT_TYPES: { value: HitType; label: string; icon: string }[] = [
   { value: 'pop-up', label: 'Pop Up', icon: '↑↑' },
 ];
 const HIT_RESULTS: { value: HitResult; label: string; color: string }[] = [
-  { value: 'out', label: 'Out', color: '#ef4444' },
-  { value: 'error', label: 'Err', color: '#f97316' },
-  { value: 'single', label: '1B', color: '#22c55e' },
-  { value: 'double', label: '2B', color: '#3b82f6' },
-  { value: 'triple', label: '3B', color: '#8b5cf6' },
+  { value: 'out', label: 'Out', color: '#64748b' },
+  { value: 'error', label: 'Err', color: '#f59e0b' },
+  { value: 'single', label: '1B', color: '#14b8a6' },
+  { value: 'double', label: '2B', color: '#60a5fa' },
+  { value: 'triple', label: '3B', color: '#818cf8' },
   { value: 'home-run', label: 'HR', color: '#eab308' },
 ];
 

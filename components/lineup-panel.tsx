@@ -49,8 +49,8 @@ const OUTCOME_COLORS: Record<string, string> = {
   'swinging-strike': 'text-red-400',
   'foul': 'text-amber-400',
   'foul-tip': 'text-amber-400',
-  'in-play': 'text-green-400',
-  'walk': 'text-blue-300',
+  'in-play': 'text-yellow-400',
+  'walk': 'text-sky-400',
   'strikeout': 'text-red-500',
 };
 const HIT_ZONE_ABBR: Record<string, string> = {
@@ -88,16 +88,16 @@ function getResultBadge(ab: AtBat): ReactNode {
     const wasSwing = lastPitch ? lastPitch.swing : true;
     return <>🔴 <KLabel swing={wasSwing} /></>;
   }
-  const m: Record<string, string> = { 'walk': '🟢 BB', 'manual-end': '—' };
+  const m: Record<string, string> = { 'walk': '🔵 BB', 'manual-end': '—' };
   return m[ab.result ?? ''] ?? '—';
 }
 function getResultColor(ab: AtBat): string {
   if (ab.result === 'strikeout') return 'text-red-400';
-  if (ab.result === 'walk') return 'text-blue-300';
+  if (ab.result === 'walk') return 'text-sky-400';
   if (ab.result === 'in-play') {
     const r = ab.pitches.find(p => p.hitData)?.hitData?.result;
     if (r === 'out' || r === 'error') return 'text-red-400';
-    return 'text-green-400';
+    return 'text-yellow-400';
   }
   return 'text-slate-400';
 }
@@ -112,10 +112,10 @@ const SMX=200, SMY=298;
 const SWARN_LX=44, SWARN_LY=209, SWARN_RX=356, SWARN_RY=209;
 
 function sprayHitColor(result: string) {
-  if (result === 'out')       return '#ef4444';
+  if (result === 'out')       return '#64748b';
   if (result === 'home-run')  return '#eab308';
-  if (result === 'error')     return '#f97316';
-  return '#22c55e';
+  if (result === 'error')     return '#f59e0b';
+  return '#14b8a6';
 }
 
 function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
@@ -174,10 +174,10 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
       {/* Legend */}
       <div className="flex gap-3 flex-wrap px-0.5">
         {([
-          { color: '#22c55e', label: 'Hit' },
-          { color: '#ef4444', label: 'Out' },
+          { color: '#14b8a6', label: 'Hit' },
+          { color: '#64748b', label: 'Out' },
           { color: '#eab308', label: 'HR' },
-          { color: '#f97316', label: 'Error' },
+          { color: '#f59e0b', label: 'Error' },
         ] as { color: string; label: string }[]).map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />

@@ -179,10 +179,10 @@ const SMX=200,SMY=298;
 const SWARN_LX=44,SWARN_LY=209,SWARN_RX=356,SWARN_RY=209;
 
 function hitDotColor(r: string) {
-  if (r === 'out')      return '#ef4444';
+  if (r === 'out')      return '#64748b';
   if (r === 'home-run') return '#eab308';
-  if (r === 'error')    return '#f97316';
-  return '#22c55e';
+  if (r === 'error')    return '#f59e0b';
+  return '#14b8a6';
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -743,7 +743,7 @@ export function BatterHistoryModal({
                   }
                 </svg>
                 <div className="mt-2 flex gap-4 flex-wrap items-center">
-                  {[{color:'#22c55e',label:'Hit'},{color:'#ef4444',label:'Out'},{color:'#eab308',label:'HR'},{color:'#f97316',label:'Error'}].map(({ color, label }) => (
+                  {[{color:'#14b8a6',label:'Hit'},{color:'#64748b',label:'Out'},{color:'#eab308',label:'HR'},{color:'#f59e0b',label:'Error'}].map(({ color, label }) => (
                     <div key={label} className="flex items-center gap-1.5">
                       <div className="w-3 h-3 rounded-full" style={{ background: color }} />
                       <span className="text-slate-400 text-[13px]">{label}</span>

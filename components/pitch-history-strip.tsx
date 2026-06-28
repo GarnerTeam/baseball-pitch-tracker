@@ -4,7 +4,7 @@ import { PITCH_TYPE_COLORS } from '@/types';
 
 // Strikeout is omitted here — rendered dynamically as K or ꓘ based on swing
 const OUTCOME_SYM: Record<string, string> = { ball:'B','called-strike':'Kc','swinging-strike':'Ks',foul:'F','foul-tip':'FT','in-play':'IP',walk:'BB' };
-const OUTCOME_COL: Record<string, string> = { ball:'#22c55e','called-strike':'#ef4444','swinging-strike':'#dc2626',foul:'#f97316','foul-tip':'#fb923c','in-play':'#3b82f6',walk:'#10b981',strikeout:'#7f1d1d' };
+const OUTCOME_COL: Record<string, string> = { ball:'#22c55e','called-strike':'#ef4444','swinging-strike':'#dc2626',foul:'#f97316','foul-tip':'#fb923c','in-play':'#eab308',walk:'#38bdf8',strikeout:'#7f1d1d' };
 
 /** K = swinging strikeout  |  mirrored K = strikeout looking */
 function KLabel({ swing }: { swing: boolean }) {
