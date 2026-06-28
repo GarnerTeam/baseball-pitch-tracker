@@ -1,6 +1,6 @@
 'use client';
-import { useState, ReactNode } from 'react';
-import { GameState, Player, AtBat, PitchRecord } from '@/types';
+import { useState, useRef, ReactNode } from 'react';
+import { GameState, Player, AtBat, PitchRecord, PitchType, PitchOutcome, PITCH_TYPE_COLORS } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
@@ -22,6 +22,8 @@ interface LineupPanelProps {
   onAddBatter: (p: Player) => void;
   onRemoveBatter: (idx: number) => void;
   onSetBatterAt: (idx: number, player: Player) => void;
+  onReorderBatter: (fromIdx: number, toIdx: number) => void;
+  onEditPitch: (atBatId: string, pitchId: string, updates: Partial<PitchRecord>) => void;
   onUndoLastEnd: () => void;
   onSetWebhookUrl: (url: string) => void;
   syncStatus?: SyncStatus | null;
@@ -41,7 +43,6 @@ const OUTCOME_LABELS: Record<string, string> = {
   'foul-tip': 'Foul Tip',
   'in-play': 'In Play',
   'walk': 'Walk',
-  // 'strikeout' handled separately via KLabel
 };
 const OUTCOME_COLORS: Record<string, string> = {
   'ball': 'text-blue-400',
@@ -77,7 +78,6 @@ function getResultBadge(ab: AtBat): ReactNode {
     const typeIcon   = _HIT_TYPE_ICONS[hd.type ?? '']   ?? '';
     const resultIcon  = _HIT_RESULT_ICONS[hd.result]    ?? '';
     const resultLabel = _HIT_RESULT_LABELS[hd.result]   ?? hd.result;
-    // For HR the zone already says HR-Lft etc.; skip it to avoid '⭐ HR · HR·LCtr'
     const isHR = hd.result === 'home-run';
     const zone = (!isHR && hd.zone) ? (HIT_ZONE_ABBR[hd.zone] ?? hd.zone) : '';
     const typePrefix = typeIcon ? `${typeIcon} ` : '';
@@ -102,6 +102,82 @@ function getResultColor(ab: AtBat): string {
   return 'text-slate-400';
 }
 
+// ── Pitch edit form ────────────────────────────────────────────────────────────
+const EDIT_PITCH_TYPES: PitchType[] = ['FB', 'CB', 'SL', 'CH'];
+const EDIT_OUTCOMES: { value: PitchOutcome; label: string; swing: boolean }[] = [
+  { value: 'ball',            label: 'Ball',      swing: false },
+  { value: 'called-strike',   label: 'Called ☒',  swing: false },
+  { value: 'swinging-strike', label: 'Swing ☒',   swing: true  },
+  { value: 'foul',            label: 'Foul',      swing: true  },
+  { value: 'foul-tip',        label: 'Tip',       swing: true  },
+  { value: 'walk',            label: 'Walk',      swing: false },
+];
+interface PitchEditFormState {
+  pitchType: PitchType;
+  outcome: PitchOutcome;
+  swing: boolean;
+}
+function PitchEditInlineForm({
+  form, onChange, onSave, onCancel,
+}: {
+  form: PitchEditFormState;
+  onChange: (f: PitchEditFormState) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="bg-slate-800 rounded-lg p-2 mt-1 space-y-1.5 border border-blue-800/70">
+      {/* Pitch type row */}
+      <div className="flex gap-1">
+        {EDIT_PITCH_TYPES.map(pt => (
+          <button
+            key={pt}
+            onClick={() => onChange({ ...form, pitchType: pt })}
+            className={`flex-1 h-8 rounded text-[15px] font-bold border ${
+              form.pitchType === pt
+                ? 'border-transparent text-white'
+                : 'bg-slate-700 border-slate-600 text-slate-400'
+            }`}
+            style={form.pitchType === pt ? { background: PITCH_TYPE_COLORS[pt], color: '#fff' } : { color: PITCH_TYPE_COLORS[pt] }}
+          >
+            {pt}
+          </button>
+        ))}
+      </div>
+      {/* Outcome row */}
+      <div className="flex flex-wrap gap-1">
+        {EDIT_OUTCOMES.map(o => (
+          <button
+            key={o.value}
+            onClick={() => onChange({ ...form, outcome: o.value, swing: o.swing })}
+            className={`px-2 h-8 rounded text-[14px] font-medium ${
+              form.outcome === o.value
+                ? 'bg-blue-700 text-white'
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {/* Save / Cancel */}
+      <div className="flex gap-2">
+        <button
+          onClick={onSave}
+          className="flex-1 h-8 rounded bg-green-700 hover:bg-green-600 text-white text-[15px] font-bold"
+        >
+          Save
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 h-8 rounded bg-slate-700 text-slate-400 text-[15px]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Field geometry constants (matches analytics-screen) ───────────────────────
 const SW=400, SH=390, SHX=200, SHY=365;
@@ -205,18 +281,15 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
     setEditing(false);
   }
 
-  // Truncate URL for display
   const displayUrl = webhookUrl
     ? webhookUrl.replace('https://script.google.com/macros/s/', '…/s/').slice(0, 38) + '…'
     : '';
 
   return (
     <div className="mx-3 mb-6 mt-4">
-      {/* Section header */}
       <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Google Sheets Sync</p>
 
       <div className={`rounded-xl border-2 ${isConnected && !editing ? 'border-emerald-600 bg-emerald-950/40' : 'border-amber-600 bg-amber-950/30'}`}>
-        {/* Status bar */}
         <div className="flex items-center gap-3 px-4 py-3">
           <span className="text-[28px] leading-none flex-shrink-0">
             {isConnected && !editing ? '✅' : '⚠️'}
@@ -253,16 +326,13 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
           )}
         </div>
 
-        {/* Error detail — shown when sync failed and not yet editing */}
         {isConnected && !editing && syncStatus && !syncStatus.ok && (
           <div className="px-4 pb-3 border-t border-red-900/40 pt-3 space-y-2">
             <p className="text-red-300 text-[14px] font-semibold">Error from server:</p>
             <p className="text-red-400/90 text-[13px] font-mono break-all leading-snug bg-red-950/50 rounded-lg px-3 py-2">
               {syncStatus.message}
             </p>
-            <p className="text-slate-400 text-[14px]">
-              Most likely causes:
-            </p>
+            <p className="text-slate-400 text-[14px]">Most likely causes:</p>
             <ul className="text-slate-400 text-[13px] space-y-1 list-none pl-1">
               <li>• Script not deployed as a Web App yet</li>
               <li>• Access set to <strong className="text-slate-300">"Only myself"</strong> — must be <strong className="text-slate-300">"Anyone"</strong></li>
@@ -277,7 +347,6 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
           </div>
         )}
 
-        {/* Connect / Edit form */}
         {(!isConnected || editing) && (
           <div className="px-4 pb-4 space-y-3 border-t border-slate-700/60 pt-3">
             <p className="text-slate-400 text-[15px]">
@@ -323,17 +392,16 @@ export function LineupPanel({
   state, readOnly = false,
   onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
+  onReorderBatter, onEditPitch,
   onUndoLastEnd, onSetWebhookUrl, syncStatus,
 }: LineupPanelProps) {
   const {
     pitcher, lineup, currentBatterIndex, allAtBats,
     lastCompletedAtBatSnapshot, currentAtBat,
   } = state;
-  // Guard against old localStorage saves that predate this field
   const pitcherHistory = state.pitcherHistory ?? [];
 
   // ── Pitcher state ──────────────────────────────────────────────────────────
-  // 'idle' | 'new' (entering a new pitcher) | 'edit' (fixing current pitcher info)
   const [pitcherMode, setPitcherMode] = useState<'idle' | 'new' | 'edit'>(
     () => pitcher.name.trim() ? 'idle' : 'new'
   );
@@ -354,11 +422,22 @@ export function LineupPanel({
   const [slotForm, setSlotForm] = useState({ name: '', num: '' });
   const [extraSlots, setExtraSlots] = useState(0);
 
+  // ── Drag-to-reorder state ─────────────────────────────────────────────────
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
+  const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // ── Pitch edit state ──────────────────────────────────────────────────────
+  const [editingPitch, setEditingPitch] = useState<{ atBatId: string; pitchId: string } | null>(null);
+  const [pitchEditForm, setPitchEditForm] = useState<PitchEditFormState>({
+    pitchType: 'FB', outcome: 'ball', swing: false,
+  });
+
   const MAX_SLOTS = 16;
   const visibleSlots = Math.max(9, lineup.length, Math.min(9 + extraSlots, MAX_SLOTS));
 
   // ── Pitcher helpers ────────────────────────────────────────────────────────
-  /** Count pitches thrown by a specific pitcher (all recorded at-bats + current) */
   function getPitchCount(name: string, number: string): number {
     const historicalPitches = allAtBats
       .flatMap(ab => ab.pitches)
@@ -369,7 +448,6 @@ export function LineupPanel({
       .length;
     return historicalPitches + currentPitches;
   }
-
 
   function openPitcherNew() {
     setPName('');
@@ -389,17 +467,7 @@ export function LineupPanel({
   }
 
   // ── Batter helpers ─────────────────────────────────────────────────────────
-  /**
-   * Filter at-bats for a specific batter.
-   * Uses playerId when both the AtBat record and the player have IDs — this ensures
-   * substituted players don't inherit the previous occupant's at-bat history.
-   * Falls back to batterIndex for legacy records without playerId.
-   */
   function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
-    // Detect whether a substitution has ever occurred at this slot.
-    // A sub leaves behind at-bats with a *different* playerId at the same batterIndex.
-    // If no sub has occurred, legacy at-bats (playerId === undefined) at this slot
-    // safely belong to the current player (e.g. first AB created before lineup filled).
     const subHasOccurred = playerId
       ? allAtBats.some(ab => ab.playerId && ab.playerId !== playerId && ab.batterIndex === batterIdx)
       : false;
@@ -409,14 +477,10 @@ export function LineupPanel({
         const isComplete = ab.isComplete && ab.pitches.length > 0;
         if (!isComplete) return false;
         if (playerId) {
-          // Exact UUID match — always include
           if (ab.playerId === playerId) return true;
-          // Legacy record (no playerId) at the same slot — include only when no sub
-          // has ever occurred here. Once a sub happens, anonymous records are ambiguous.
           if (!ab.playerId && ab.batterIndex === batterIdx && !subHasOccurred) return true;
           return false;
         }
-        // No playerId on caller — fall back to position index
         return ab.batterIndex === batterIdx;
       })
       .sort((a, b) => b.atBatNumber - a.atBatNumber);
@@ -433,11 +497,12 @@ export function LineupPanel({
       setExpanded({ idx, view });
       setSlotForm({ name: prefill?.name ?? '', num: prefill?.number ?? '' });
     }
+    setEditingPitch(null);
   }
 
   function handleSlotRowClick(idx: number) {
     const player = lineup[idx];
-    if (!player?.name?.trim()) {
+    if (!player) {
       openSlot(idx, 'edit');
     } else {
       openSlot(idx, 'details');
@@ -446,18 +511,17 @@ export function LineupPanel({
 
   function handleSubClick(e: React.MouseEvent, idx: number) {
     e.stopPropagation();
-    // Open sub form with EMPTY fields — this is a new player, not editing the existing one
     if (expanded?.idx === idx && expanded.view === 'edit') {
       setExpanded(null);
     } else {
       setExpanded({ idx, view: 'edit' });
       setSlotForm({ name: '', num: '' });
     }
+    setEditingPitch(null);
   }
 
   function handleSave(idx: number) {
-    if (!slotForm.name.trim() || !slotForm.num.trim()) return;
-    // NEW player id — this is critical: new player must NOT inherit old player's at-bat history
+    // Name and number are optional — save whatever the user has entered
     const player: Player = { id: crypto.randomUUID(), name: slotForm.name.trim(), number: slotForm.num.trim() };
     onSetBatterAt(idx, player);
     setExpanded(null);
@@ -472,15 +536,49 @@ export function LineupPanel({
       setExpanded({ idx, view: 'edit-existing' });
       setSlotForm({ name: player.name, num: player.number });
     }
+    setEditingPitch(null);
   }
 
   function handleEditExistingSave(idx: number, currentPlayer: Player) {
-    if (!slotForm.name.trim() || !slotForm.num.trim()) return;
-    // KEEP the same player id so at-bat history stays attached to this player
+    // Name and number are optional
     const player: Player = { ...currentPlayer, name: slotForm.name.trim(), number: slotForm.num.trim() };
     onSetBatterAt(idx, player);
     setExpanded(null);
     setSlotForm({ name: '', num: '' });
+  }
+
+  // ── Drag helpers ──────────────────────────────────────────────────────────
+  function handleDragHandleTouchStart(e: React.TouchEvent, idx: number) {
+    e.stopPropagation();
+    dragRef.current = idx;
+    setDragFrom(idx);
+    setDragOver(idx);
+  }
+
+  function handleDragHandleTouchMove(e: React.TouchEvent) {
+    if (dragRef.current === null) return;
+    // Prevent scroll while dragging
+    e.preventDefault();
+    const touch = e.touches[0];
+    // Find which slot the finger is over by checking bounding rects
+    for (let i = 0; i < slotRefs.current.length; i++) {
+      const el = slotRefs.current[i];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        if (i !== dragOver) setDragOver(i);
+        break;
+      }
+    }
+  }
+
+  function handleDragHandleTouchEnd() {
+    if (dragRef.current !== null && dragOver !== null && dragOver !== dragRef.current) {
+      onReorderBatter(dragRef.current, dragOver);
+    }
+    dragRef.current = null;
+    setDragFrom(null);
+    setDragOver(null);
   }
 
   return (
@@ -520,7 +618,6 @@ export function LineupPanel({
           ))}
         </div>
 
-        {/* Current Pitcher display */}
         {pitcherMode === 'idle' && (
           <div className="bg-slate-900 rounded-xl border border-slate-700 divide-y divide-slate-800">
             <div
@@ -543,7 +640,6 @@ export function LineupPanel({
           </div>
         )}
 
-        {/* New Pitcher / Edit form */}
         {!readOnly && (pitcherMode === 'new' || pitcherMode === 'edit') && (
           <div className="bg-slate-900 rounded-xl p-3 space-y-2 border border-slate-700">
             <p className="text-slate-400 text-[18px]">
@@ -576,7 +672,6 @@ export function LineupPanel({
           </div>
         )}
 
-        {/* Previous Pitchers */}
         {pitcherHistory.length > 0 && (
           <div className="mt-2 space-y-1">
             <p className="text-slate-600 text-[15px] uppercase tracking-wide px-1">Previous</p>
@@ -607,23 +702,39 @@ export function LineupPanel({
       <div className="px-4 pt-1 pb-4">
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider">Batting Order</p>
-          <span className="text-slate-600 text-[18px]">{lineup.filter(p => p?.name?.trim()).length} batters</span>
+          <span className="text-slate-600 text-[18px]">{lineup.filter(p => !!p).length} batters</span>
         </div>
+        {!readOnly && dragFrom !== null && (
+          <p className="text-blue-400 text-[15px] text-center mb-1.5 animate-pulse">
+            Drag to reorder — slot {(dragFrom ?? 0) + 1} → slot {(dragOver ?? dragFrom ?? 0) + 1}
+          </p>
+        )}
 
         <div className="space-y-1.5">
           {Array.from({ length: visibleSlots }).map((_, idx) => {
             const player = lineup[idx] ?? null;
-            const hasPlayer = !!player?.name?.trim();
+            // A slot is "occupied" whenever a Player object exists there (even with no name)
+            const hasPlayer = !!player;
             const isActive = hasPlayer && idx === currentBatterIndex;
             const isExpanded = expanded?.idx === idx;
             const isDetails      = isExpanded && expanded?.view === 'details';
             const isEdit         = isExpanded && expanded?.view === 'edit';
             const isEditExisting = isExpanded && expanded?.view === 'edit-existing';
-            // Use playerId-aware history lookup
             const lastAB = hasPlayer ? getLastCompletedAB(idx, player!.id) : undefined;
 
+            // Drag visual state
+            const isDragSource = dragFrom === idx;
+            const isDragTarget = dragOver === idx && dragFrom !== null && dragFrom !== idx;
+
             return (
-              <div key={idx} className={`rounded-xl overflow-hidden border ${isActive ? 'border-blue-600' : isEditExisting ? 'border-blue-800' : 'border-slate-700'}`}>
+              <div
+                key={idx}
+                ref={el => { slotRefs.current[idx] = el; }}
+                className={`rounded-xl overflow-hidden border transition-all duration-150 ${
+                  isDragSource ? 'opacity-40 scale-95' :
+                  isDragTarget ? 'ring-2 ring-blue-400 scale-[1.02]' : ''
+                } ${isActive ? 'border-blue-600' : isEditExisting ? 'border-blue-800' : 'border-slate-700'}`}
+              >
 
                 {/* ── Slot row ── */}
                 <div
@@ -632,15 +743,32 @@ export function LineupPanel({
                     ${isActive ? 'bg-slate-800' : hasPlayer ? 'bg-slate-900 hover:bg-slate-800/70' : 'bg-slate-900/50 hover:bg-slate-800/50'}
                     ${(isExpanded || isEditExisting) ? 'border-b border-slate-700' : ''}`}
                 >
+                  {/* ── Drag handle (filled slots only, not in readOnly) ── */}
+                  {!readOnly && hasPlayer && (
+                    <span
+                      className="text-slate-600 text-[20px] leading-none cursor-grab active:cursor-grabbing select-none flex-shrink-0 touch-none px-0.5"
+                      title="Drag to reorder"
+                      onTouchStart={e => handleDragHandleTouchStart(e, idx)}
+                      onTouchMove={handleDragHandleTouchMove}
+                      onTouchEnd={handleDragHandleTouchEnd}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      ⠿
+                    </span>
+                  )}
+                  {!readOnly && !hasPlayer && (
+                    <span className="w-5 flex-shrink-0" />
+                  )}
+
                   <span className="text-slate-500 text-[18px] font-mono w-5 text-right flex-shrink-0">{idx + 1}.</span>
 
                   {hasPlayer ? (
                     <>
                       <span className={`text-[18px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                        #{player!.number}
+                        #{player!.number || '—'}
                       </span>
                       <span className={`flex-1 text-[21px] truncate ${isActive ? 'text-slate-100 font-semibold' : 'text-slate-300'}`}>
-                        {player!.name}
+                        {player!.name || <span className="italic text-slate-500">No Name</span>}
                       </span>
 
                       {isActive && <span className="text-blue-400 text-[15px] font-bold flex-shrink-0">AT BAT</span>}
@@ -694,22 +822,64 @@ export function LineupPanel({
                           </div>
                           <div className="space-y-1.5">
                             {ab.pitches.map((pitch, i) => (
-                              <PitchRow
-                                key={pitch.id}
-                                pitch={pitch}
-                                index={i}
-                                playerHand={player.hand}
-                              />
+                              <div key={pitch.id} className="relative group">
+                                <PitchRow
+                                  pitch={pitch}
+                                  index={i}
+                                  playerHand={player.hand}
+                                />
+                                {/* ── Pitch edit button ── */}
+                                {!readOnly && (
+                                  <button
+                                    onClick={() => {
+                                      if (editingPitch?.pitchId === pitch.id) {
+                                        setEditingPitch(null);
+                                      } else {
+                                        setEditingPitch({ atBatId: ab.id, pitchId: pitch.id });
+                                        setPitchEditForm({
+                                          pitchType: pitch.pitchType,
+                                          outcome: pitch.outcome,
+                                          swing: pitch.swing,
+                                        });
+                                      }
+                                    }}
+                                    className={`absolute top-1 right-1 text-[13px] px-1.5 py-0.5 rounded border transition-colors ${
+                                      editingPitch?.pitchId === pitch.id
+                                        ? 'text-blue-300 bg-blue-950 border-blue-700'
+                                        : 'text-slate-600 bg-transparent border-transparent hover:text-blue-400 hover:border-slate-600'
+                                    }`}
+                                    title="Edit this pitch"
+                                  >
+                                    ✎
+                                  </button>
+                                )}
+                                {/* ── Inline pitch edit form ── */}
+                                {editingPitch?.pitchId === pitch.id && (
+                                  <PitchEditInlineForm
+                                    form={pitchEditForm}
+                                    onChange={setPitchEditForm}
+                                    onSave={() => {
+                                      onEditPitch(ab.id, pitch.id, {
+                                        pitchType: pitchEditForm.pitchType,
+                                        outcome:   pitchEditForm.outcome,
+                                        swing:     pitchEditForm.swing,
+                                      });
+                                      setEditingPitch(null);
+                                    }}
+                                    onCancel={() => setEditingPitch(null)}
+                                  />
+                                )}
+                              </div>
                             ))}
                           </div>
                         </div>
                       )) : (
                         <p className="text-slate-600 text-[18px] text-center py-2">No completed at-bats yet</p>
                       )}
-                      {/* Spray chart — shows all hits across every at-bat for this batter */}
+                      {/* Spray chart */}
                       <BatterSprayChart allABs={allBatterABs} />
 
-                      {/* Full history button — opens heat map + spray chart from all games */}
+                      {/* Full history button */}
                       {state.sheetsWebhookUrl && (
                         <button
                           onClick={() => {
@@ -746,10 +916,10 @@ export function LineupPanel({
                     {hasPlayer ? (
                       <p className="text-amber-400/80 text-[18px] mb-2 font-medium">
                         Sub in new batter at slot {idx + 1}
-                        <span className="text-slate-500 font-normal"> (replaces {player!.name})</span>
+                        <span className="text-slate-500 font-normal"> (replaces {player!.name || 'current batter'})</span>
                       </p>
                     ) : (
-                      <p className="text-slate-400 text-[18px] mb-2">Add batter to slot {idx + 1}</p>
+                      <p className="text-slate-400 text-[18px] mb-2">Add batter to slot {idx + 1} <span className="text-slate-600 text-[15px]">(name &amp; number optional)</span></p>
                     )}
                     <div className="flex gap-2">
                       <input
@@ -762,15 +932,14 @@ export function LineupPanel({
                       <input
                         value={slotForm.name}
                         onChange={e => setSlotForm(s => ({ ...s, name: e.target.value }))}
-                        placeholder="Player name"
+                        placeholder="Player name (optional)"
                         onKeyDown={e => { if (e.key === 'Enter') handleSave(idx); }}
                         className="flex-1 h-10 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 px-3 outline-none focus:border-blue-500"
                         autoFocus
                       />
                       <button
                         onClick={() => handleSave(idx)}
-                        disabled={!slotForm.name.trim() || !slotForm.num.trim()}
-                        className="px-3 h-10 rounded-lg bg-green-700 hover:bg-green-600 text-white font-bold text-[27px] disabled:opacity-40 flex-shrink-0"
+                        className="px-3 h-10 rounded-lg bg-green-700 hover:bg-green-600 text-white font-bold text-[27px] flex-shrink-0"
                       >✓</button>
                     </div>
                     {/* Clear slot: only for filled slots that are not currently active */}
@@ -779,7 +948,7 @@ export function LineupPanel({
                         onClick={() => { onRemoveBatter(idx); setExpanded(null); }}
                         className="mt-2 w-full h-8 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-500 hover:text-red-400 text-[18px] font-medium border border-slate-800 hover:border-red-900"
                       >
-                        Clear Slot {idx + 1} (remove {player!.name} from order)
+                        Clear Slot {idx + 1} (remove {player!.name || 'batter'} from order)
                       </button>
                     )}
                   </div>
@@ -803,15 +972,14 @@ export function LineupPanel({
                       <input
                         value={slotForm.name}
                         onChange={e => setSlotForm(s => ({ ...s, name: e.target.value }))}
-                        placeholder="Player name"
+                        placeholder="Player name (optional)"
                         onKeyDown={e => { if (e.key === 'Enter') handleEditExistingSave(idx, player); }}
                         className="flex-1 h-10 rounded-lg bg-slate-800 border border-blue-700 text-slate-100 px-3 outline-none focus:border-blue-400"
                         autoFocus
                       />
                       <button
                         onClick={() => handleEditExistingSave(idx, player)}
-                        disabled={!slotForm.name.trim() || !slotForm.num.trim()}
-                        className="px-3 h-10 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-[27px] disabled:opacity-40 flex-shrink-0"
+                        className="px-3 h-10 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-[27px] flex-shrink-0"
                       >✓</button>
                     </div>
                   </div>

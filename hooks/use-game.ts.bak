@@ -73,7 +73,6 @@ function createInitialState(): GameState {
 type GameAction =
   | { type: 'START_GAME'; homeTeam: string; visitingTeam: string }
   | { type: 'SET_BASE'; base: keyof BaseState; occupied: boolean }
-  | { type: 'SET_OUTS'; count: 0 | 1 | 2 }
   | { type: 'SET_PITCH_TYPE'; pitchType: PitchType }
   | { type: 'SET_LOCATION'; location: PitchLocation }
   | { type: 'SET_SWING'; swing: SwingResult | null }
@@ -99,9 +98,7 @@ type GameAction =
   | { type: 'UNDO_PITCH' }
   | { type: 'PREV_BATTER' }
   | { type: 'NEW_GAME' }
-  | { type: 'UNDO_LAST_END' }
-  | { type: 'REORDER_BATTERS'; fromIdx: number; toIdx: number }
-  | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> };
+  | { type: 'UNDO_LAST_END' };
 
 function resetPendingPitch(state: GameState) {
   return {
@@ -402,67 +399,17 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'SET_BATTER_AT': {
       const newLineup = [...state.lineup];
-      const subIdx = (action as any).idx as number;
-      const newPlayer = (action as any).player as Player;
-      if (subIdx < newLineup.length) {
-        newLineup[subIdx] = newPlayer;
+      if ((action as any).idx < newLineup.length) {
+        newLineup[(action as any).idx] = (action as any).player;
       } else {
         // Pad with empty if needed then set
-        while (newLineup.length < subIdx) {
+        while (newLineup.length < (action as any).idx) {
           newLineup.push({ id: `empty-${newLineup.length}`, name: '', number: '' });
         }
-        newLineup.push(newPlayer);
+        newLineup.push((action as any).player);
       }
-      // If the sub is at the ACTIVE batting slot, update currentAtBat.playerId so
-      // the at-bat (and all pitches in it) are attributed to the substitute when
-      // it completes and lands in allAtBats. Without this, the sub's lineup card
-      // would find no at-bats because the at-bat was saved under the original
-      // batter's playerId.
-      const updatedCurrentAtBat =
-        state.currentAtBat && subIdx === state.currentBatterIndex
-          ? { ...state.currentAtBat, playerId: newPlayer.id }
-          : state.currentAtBat;
-      // Clamp to 16
-      return { ...state, lineup: newLineup.slice(0, 16), currentAtBat: updatedCurrentAtBat };
-    }
-
-    case 'REORDER_BATTERS': {
-      const { fromIdx, toIdx } = action as any;
-      if (fromIdx === toIdx) return state;
-      const rLineup = [...state.lineup];
-      const [rMoved] = rLineup.splice(fromIdx, 1);
-      rLineup.splice(toIdx, 0, rMoved);
-      // Adjust currentBatterIndex so the active batter doesn't jump
-      let newCurrentIdx = state.currentBatterIndex;
-      if (state.currentBatterIndex === fromIdx) {
-        newCurrentIdx = toIdx;
-      } else if (fromIdx < toIdx && state.currentBatterIndex > fromIdx && state.currentBatterIndex <= toIdx) {
-        newCurrentIdx = state.currentBatterIndex - 1;
-      } else if (fromIdx > toIdx && state.currentBatterIndex >= toIdx && state.currentBatterIndex < fromIdx) {
-        newCurrentIdx = state.currentBatterIndex + 1;
-      }
-      return { ...state, lineup: rLineup, currentBatterIndex: newCurrentIdx };
-    }
-
-    case 'EDIT_PITCH': {
-      const { atBatId, pitchId, updates } = action as any;
-      // Check current at-bat first
-      if (state.currentAtBat && state.currentAtBat.id === atBatId) {
-        const cab = state.currentAtBat;
-        const newPitches = cab.pitches.map((p: PitchRecord) =>
-          p.id === pitchId ? { ...p, ...updates } : p
-        );
-        return { ...state, currentAtBat: { ...cab, pitches: newPitches } };
-      }
-      // Update completed at-bats
-      const newAllAtBats = state.allAtBats.map((ab: AtBat) => {
-        if (ab.id !== atBatId) return ab;
-        const newPitches = ab.pitches.map((p: PitchRecord) =>
-          p.id === pitchId ? { ...p, ...updates } : p
-        );
-        return { ...ab, pitches: newPitches };
-      });
-      return { ...state, allAtBats: newAllAtBats };
+      // Clamp to 10
+      return { ...state, lineup: newLineup.slice(0, 16) };
     }
 
     case 'PREV_BATTER': {
@@ -528,67 +475,20 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case 'UNDO_PITCH': {
-      // ── Case 1: Current at-bat has pitches — undo last pitch ─────────────
-      if (state.currentAtBat && state.currentAtBat.pitches.length > 0) {
-        const pitches = state.currentAtBat.pitches.slice(0, -1);
-        const removed = state.currentAtBat.pitches[state.currentAtBat.pitches.length - 1];
-        const last = pitches[pitches.length - 1];
-        return {
-          ...state,
-          currentAtBat: {
-            ...state.currentAtBat,
-            pitches,
-            balls: last ? last.ballsAfter : 0,
-            strikes: last ? last.strikesAfter : 0,
-            isComplete: false,
-            result: undefined,
-            completedAt: undefined,
-          },
-          // Restore outs count to what it was before this pitch was recorded
-          outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
-          syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
-          notification: null,
-        };
-      }
-
-      // ── Case 2: Current at-bat is empty — undo last pitch from most recently ──
-      //    completed at-bat for the current batter (handles prev-batter + undo)
-      const currentPlayerId = state.lineup[state.currentBatterIndex]?.id;
-      const batterABs = state.allAtBats
-        .filter(ab =>
-          ab.pitches.length > 0 &&
-          (currentPlayerId
-            ? (ab.playerId === currentPlayerId || ab.batterIndex === state.currentBatterIndex)
-            : ab.batterIndex === state.currentBatterIndex)
-        )
-        .sort((a, b) => b.atBatNumber - a.atBatNumber);
-
-      const prevAB = batterABs[0];
-      if (!prevAB) return state; // nothing to undo
-
-      const pitches = prevAB.pitches.slice(0, -1);
-      const removed = prevAB.pitches[prevAB.pitches.length - 1];
+      if (!state.currentAtBat || state.currentAtBat.pitches.length === 0) return state;
+      const pitches = state.currentAtBat.pitches.slice(0, -1);
       const last = pitches[pitches.length - 1];
-
-      const restoredAB: AtBat = {
-        ...prevAB,
-        pitches,
-        balls: last ? last.ballsAfter : 0,
-        strikes: last ? last.strikesAfter : 0,
-        isComplete: false,
-        result: undefined,
-        completedAt: undefined,
-      };
-
+      const removedId = state.currentAtBat.pitches[state.currentAtBat.pitches.length - 1].id;
       return {
         ...state,
-        currentAtBat: restoredAB,
-        currentBatterIndex: prevAB.batterIndex,
-        allAtBats: state.allAtBats.filter(ab => ab.id !== prevAB.id),
-        outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
-        syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
+        currentAtBat: {
+          ...state.currentAtBat,
+          pitches,
+          balls: last ? last.ballsAfter : 0,
+          strikes: last ? last.strikesAfter : 0,
+        },
+        syncQueue: state.syncQueue.filter(p => p.id !== removedId),
         notification: null,
-        phase: 'pitching',
       };
     }
 
@@ -606,8 +506,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_BASE':
       return { ...state, baseState: { ...state.baseState, [action.base]: action.occupied } };
 
-    case 'SET_OUTS':
-      return { ...state, outsCount: action.count };
 
     default:
       return state;
@@ -626,7 +524,7 @@ export function useGame() {
         // DO NOT change the storage key — that would wipe existing game data.
         return {
           ...parsed,
-          sheetsWebhookUrl: parsed.sheetsWebhookUrl || DEFAULT_WEBHOOK_URL,
+          sheetsWebhookUrl: DEFAULT_WEBHOOK_URL || parsed.sheetsWebhookUrl,
           // Fields added in later releases — may be absent in old saves
           homeTeam:                    parsed.homeTeam                    ?? '',
           visitingTeam:                parsed.visitingTeam                ?? '',
@@ -661,14 +559,12 @@ export function useGame() {
     isSyncing.current = true;
     const snapshot = state.syncQueue;
     setSyncStatus(s => s?.ok === false ? s : null); // clear error when retrying
-    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error, _urlTail }) => {
+    syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error }) => {
       isSyncing.current = false;
       if (synced > 0) {
         const ids = snapshot.slice(0, synced).map((p) => p.id);
         dispatch({ type: 'MARK_SYNCED', pitchIds: ids });
-        const urlNote = _urlTail ? ` (…${_urlTail.slice(-15)})` : '';
-        setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}${urlNote}`, ts: Date.now() });
-        console.log('[sync] success. url tail:', _urlTail, '| pitches:', synced);
+        setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}`, ts: Date.now() });
       } else if (error) {
         setSyncStatus({ ok: false, message: error, ts: Date.now() });
         console.error('[sync] error from proxy:', error);
@@ -725,8 +621,6 @@ export function useGame() {
         dispatch({ type: 'SET_TAB', tab }), []),
       setBase: useCallback((base: keyof BaseState, occupied: boolean) =>
         dispatch({ type: 'SET_BASE', base, occupied }), []),
-      setOuts: useCallback((count: 0 | 1 | 2) =>
-        dispatch({ type: 'SET_OUTS', count }), []),
       setSheetsUrl: useCallback((url: string) =>
         dispatch({ type: 'SET_SHEETS_URL', url }), []),
       undoPitch: useCallback(() => dispatch({ type: 'UNDO_PITCH' }), []),
@@ -735,10 +629,6 @@ export function useGame() {
       undoLastEnd: useCallback(() => dispatch({ type: 'UNDO_LAST_END' }), []),
       removeBatter: useCallback((idx: number) => dispatch({ type: 'REMOVE_BATTER', idx } as any), []),
       setWebhookUrl: useCallback((url: string) => dispatch({ type: 'SET_SHEETS_URL', url }), []),
-      reorderBatter: useCallback((fromIdx: number, toIdx: number) =>
-        dispatch({ type: 'REORDER_BATTERS', fromIdx, toIdx } as any), []),
-      editPitch: useCallback((atBatId: string, pitchId: string, updates: Partial<PitchRecord>) =>
-        dispatch({ type: 'EDIT_PITCH', atBatId, pitchId, updates } as any), []),
     },
   };
 }
