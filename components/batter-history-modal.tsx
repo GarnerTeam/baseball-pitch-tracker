@@ -26,6 +26,7 @@ interface CellStat {
   typeSwings: Record<string, number>;
   typeMisses: Record<string, number>;
   typeInPlay: Record<string, number>; // pitch types put in play per zone
+  typeResults: Record<string, Record<string, number>>; // typeResults[pitchType][hitResult] = count
   results:    Record<string, number>; // hit results per zone: single/double/triple/home-run/out/error
 }
 
@@ -268,7 +269,7 @@ export function BatterHistoryModal({
     const pitchHand = (p.batterHand === 'L' || p.batterHand === 'R') ? p.batterHand : gridHand;
     const loc = normalizeLocation(rawLoc, pitchHand);
 
-    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, results: {} };
+    if (!locStats[loc]) locStats[loc] = { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, typeResults: {}, results: {} };
     const isSwing   = p.action === 'Swing';
     const isContact = isSwing && ['foul','foul-tip','in-play'].includes(p.outcome ?? '');
     const isInPlay  = isSwing && p.outcome === 'in-play';
@@ -283,7 +284,11 @@ export function BatterHistoryModal({
       locStats[loc].inPlay++;
       locStats[loc].typeInPlay[pt] = (locStats[loc].typeInPlay[pt] ?? 0) + 1;
       const hr = (p.hitResult ?? '').trim();
-      if (hr) locStats[loc].results[hr] = (locStats[loc].results[hr] ?? 0) + 1;
+      if (hr) {
+        locStats[loc].results[hr] = (locStats[loc].results[hr] ?? 0) + 1;
+        if (!locStats[loc].typeResults[pt]) locStats[loc].typeResults[pt] = {};
+        locStats[loc].typeResults[pt][hr] = (locStats[loc].typeResults[pt][hr] ?? 0) + 1;
+      }
     }
     totalPitches++;
     if (p.pitchZone === 'Ball') { ballPitches++; if (isSwing) ballSwings++; }
@@ -292,7 +297,7 @@ export function BatterHistoryModal({
   // ── Quick-read (strike zone only, min 2 pitches) ──────────────────────────
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
-      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, results: {} };
+      const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, typeResults: {}, results: {} };
       const misses = s.swings - s.contacts;
       return {
         zone: z, name: ZONE_NAMES[z], ...s,
@@ -702,14 +707,13 @@ export function BatterHistoryModal({
                       <div className="grid grid-cols-3" style={{ gap: 0 }}>
                       {[1,2,3,4,5,6,7,8,9].map(n => {
                         const zk = `Z${n}`;
-                        const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, typeInPlay:{} as Record<string,number>, results:{} as Record<string,number> };
+                        const s = locStats[zk] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{} as Record<string,number>, typeSwings:{} as Record<string,number>, typeMisses:{} as Record<string,number>, typeInPlay:{} as Record<string,number>, typeResults:{} as Record<string,Record<string,number>>, results:{} as Record<string,number> };
                         const DAMAGE_RESULTS = ['single','double','triple','home-run','error'];
                         const dmg = DAMAGE_RESULTS.reduce((sum, r) => sum + (s.results[r] ?? 0), 0);
                         const borderAlpha = dmg === 0 ? 0 : dmg === 1 ? 0.35 : dmg === 2 ? 0.6 : dmg === 3 ? 0.85 : 1.0;
                         const isRightCol = n % 3 === 0;
                         const isBottomRow = n > 6;
-                        const inPlayTypes = topTypes(s.typeInPlay ?? {}, 4);
-                        const dmgResults = DAMAGE_RESULTS.filter(r => (s.results[r] ?? 0) > 0);
+
                         return (
                           <div key={zk}
                             className="flex flex-col items-center justify-center select-none"
@@ -723,32 +727,44 @@ export function BatterHistoryModal({
                               borderRight:  isRightCol  ? 'none' : '1px solid rgba(148,163,184,0.18)',
                               borderBottom: isBottomRow ? 'none' : '1px solid rgba(148,163,184,0.18)',
                             }}>
-                            {dmg > 0 ? (
-                              <>
-                                {/* Damage count */}
-                                <span className="text-white font-black leading-none" style={{ fontSize: 46 }}>{dmg}</span>
-                                {/* Pitch types put in play — pitched colored */}
-                                {inPlayTypes.length > 0 && (
-                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 5px' }}>
-                                    {inPlayTypes.map(([t, c]) => (
-                                      <span key={t} className="font-black leading-none" style={{ fontSize: 14, color: PT_COLOR[t] ?? '#94a3b8' }}>
-                                        {PT_LABEL[t] ?? t}{c > 1 ? `×${c}` : ''}
-                                      </span>
+                            {dmg > 0 ? (() => {
+                              // Build pitch→result rows sorted by damage count desc, exclude outs
+                              const DAMAGE_ONLY = ['single','double','triple','home-run','error'];
+                              const pitchRows = Object.entries(s.typeResults ?? {})
+                                .map(([pt, res]) => ({
+                                  pt,
+                                  total: DAMAGE_ONLY.reduce((sum, r) => sum + (res[r] ?? 0), 0),
+                                  results: DAMAGE_ONLY.filter(r => (res[r] ?? 0) > 0)
+                                             .sort((a, b) => RES_ORDER.indexOf(a) - RES_ORDER.indexOf(b)),
+                                  res,
+                                }))
+                                .filter(row => row.total > 0)
+                                .sort((a, b) => b.total - a.total)
+                                .slice(0, 3);
+                              return (
+                                <>
+                                  {/* Damage count */}
+                                  <span className="text-white font-black leading-none" style={{ fontSize: 44 }}>{dmg}</span>
+                                  {/* Pitch → Result rows */}
+                                  <div className="flex flex-col items-center" style={{ gap: 2, width: '100%' }}>
+                                    {pitchRows.map(({ pt, total, results, res }) => (
+                                      <div key={pt} className="flex items-center justify-center" style={{ gap: 3 }}>
+                                        <span className="font-black leading-none" style={{ fontSize: 13, color: PT_COLOR[pt] ?? '#94a3b8' }}>
+                                          {PT_LABEL[pt] ?? pt}{total > 1 ? `×${total}` : ''}
+                                        </span>
+                                        <span className="font-bold leading-none" style={{ fontSize: 11, color: 'rgba(148,163,184,0.5)' }}>=</span>
+                                        <span className="font-bold leading-none" style={{ fontSize: 13, color: RES_COLOR[results[0]] ?? '#94a3b8' }}>
+                                          {RES_LABEL[results[0]]}{results.length === 1 && (res[results[0]] ?? 0) > 1 ? `×${res[results[0]]}` : ''}
+                                          {results.length > 1 ? results.slice(1).map(r => (
+                                            <span key={r} style={{ color: RES_COLOR[r] ?? '#94a3b8' }}> {RES_LABEL[r]}{(res[r] ?? 0) > 1 ? `×${res[r]}` : ''}</span>
+                                          )) : null}
+                                        </span>
+                                      </div>
                                     ))}
                                   </div>
-                                )}
-                                {/* Hit results */}
-                                {dmgResults.length > 0 && (
-                                  <div className="flex flex-wrap items-center justify-center" style={{ gap: '1px 4px' }}>
-                                    {dmgResults.map(r => (
-                                      <span key={r} className="font-bold leading-none" style={{ fontSize: 13, color: RES_COLOR[r] ?? '#94a3b8' }}>
-                                        {RES_LABEL[r]}{(s.results[r] ?? 0) > 1 ? `×${s.results[r]}` : ''}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </>
-                            ) : (
+                                </>
+                              );
+                            })() : (
                               <span style={{ fontSize: 16, color: 'rgba(100,116,139,0.08)' }}>·</span>
                             )}
                           </div>
