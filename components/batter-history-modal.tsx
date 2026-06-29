@@ -771,21 +771,19 @@ export function BatterHistoryModal({
                                   {/* Pitch → Result rows */}
                                   <div className="flex flex-col items-center" style={{ gap: 2, width: '100%' }}>
                                     {pitchRows.map(({ pt, total, results, res }) => (
-                                      <div key={pt} className="flex flex-col items-center" style={{ gap: 1 }}>
-                                        <div className="flex items-center justify-center" style={{ gap: 3 }}>
-                                          <span className="font-black leading-none" style={{ fontSize: 14, color: PT_COLOR[pt] ?? '#94a3b8' }}>
-                                            {PT_LABEL[pt] ?? pt}{total > 1 ? `×${total}` : ''}
-                                          </span>
-                                          <span className="font-bold leading-none" style={{ fontSize: 12, color: 'rgba(148,163,184,0.5)' }}>=</span>
-                                          <span className="font-bold leading-none" style={{ fontSize: 14, color: RES_COLOR[results[0]] ?? '#94a3b8' }}>
-                                            {RES_LABEL[results[0]]}{results.length === 1 && (res[results[0]] ?? 0) > 1 ? `×${res[results[0]]}` : ''}
-                                            {results.length > 1 ? results.slice(1).map(r => (
-                                              <span key={r} style={{ color: RES_COLOR[r] ?? '#94a3b8' }}> {RES_LABEL[r]}{(res[r] ?? 0) > 1 ? `×${res[r]}` : ''}</span>
-                                            )) : null}
-                                          </span>
-                                        </div>
+                                      <div key={pt} className="flex items-center justify-center" style={{ gap: 2 }}>
+                                        <span className="font-black leading-none" style={{ fontSize: 11, color: PT_COLOR[pt] ?? '#94a3b8' }}>
+                                          {PT_LABEL[pt] ?? pt}{total > 1 ? `×${total}` : ''}
+                                        </span>
+                                        <span className="font-bold leading-none" style={{ fontSize: 10, color: 'rgba(148,163,184,0.4)' }}>=</span>
+                                        <span className="font-bold leading-none" style={{ fontSize: 11, color: RES_COLOR[results[0]] ?? '#94a3b8' }}>
+                                          {RES_LABEL[results[0]]}{results.length === 1 && (res[results[0]] ?? 0) > 1 ? `×${res[results[0]]}` : ''}
+                                          {results.length > 1 ? results.slice(1).map(r => (
+                                            <span key={r} style={{ color: RES_COLOR[r] ?? '#94a3b8' }}> {RES_LABEL[r]}{(res[r] ?? 0) > 1 ? `×${res[r]}` : ''}</span>
+                                          )) : null}
+                                        </span>
                                         {topZone(s.typeHitZones?.[pt] ?? {}) && (
-                                          <span className="font-semibold leading-none" style={{ fontSize: 10, color: '#94a3b8' }}>
+                                          <span className="leading-none" style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)' }}>
                                             {topZone(s.typeHitZones?.[pt] ?? {})}
                                           </span>
                                         )}
