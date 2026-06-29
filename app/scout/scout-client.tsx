@@ -191,8 +191,24 @@ const URL_KEY = 'scout-webhook-url';
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function ScoutClient() {
   const searchParams  = useSearchParams();
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [urlInput, setUrlInput]     = useState('');
+
+  // Lazy-initialize from ?url= param or localStorage synchronously on first render.
+  // This prevents the "enter URL" setup screen from flashing before the useEffect fires.
+  const [webhookUrl, setWebhookUrl] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    const paramUrl = params.get('url');
+    if (paramUrl) {
+      try { localStorage.setItem(URL_KEY, paramUrl); } catch {}
+      return paramUrl;
+    }
+    try { return localStorage.getItem(URL_KEY) ?? ''; } catch { return ''; }
+  });
+  const [urlInput, setUrlInput] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('url') ?? ((() => { try { return localStorage.getItem(URL_KEY) ?? ''; } catch { return ''; } })());
+  });
   const [game, setGame]             = useState<ScoutGame | null>(null);
   const [loading, setLoading]       = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -202,17 +218,14 @@ export function ScoutClient() {
   const [expanded, setExpanded]     = useState<string | null>(null);
   const [historyBatter, setHistoryBatter] = useState<{ name: string; number: string; pitches: PitchRowLite[] } | null>(null);
 
+  // Keep in sync if the URL param changes while the page is mounted (edge case)
   useEffect(() => {
-    // Auto-connect from ?url= query param (shared link / QR code flow)
     const paramUrl = searchParams?.get('url');
-    if (paramUrl) {
-      localStorage.setItem(URL_KEY, paramUrl);
+    if (paramUrl && paramUrl !== webhookUrl) {
+      try { localStorage.setItem(URL_KEY, paramUrl); } catch {}
       setWebhookUrl(paramUrl);
       setUrlInput(paramUrl);
-      return;
     }
-    const saved = localStorage.getItem(URL_KEY);
-    if (saved) { setWebhookUrl(saved); setUrlInput(saved); }
   }, [searchParams]);
 
   const fetchGame = useCallback(async (url: string) => {
