@@ -100,12 +100,12 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
   return (
     <div className="flex items-center justify-center gap-1">
 
-      {/* Left column: RHB icon + Swing button (25% larger, amber accent) */}
+      {/* Left column: RHB icon + Swing button (reduced 30%) */}
       <div className="flex flex-col items-center gap-1.5">
         <BatterIcon hand="R" selected={batterHand === 'R'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'R' ? null : 'R')} />
         <button
           onClick={() => onSetSwing('swing')}
-          className={`w-[70px] py-2.5 rounded-xl text-[21px] font-black tracking-wide transition-all shadow-md ${
+          className={`w-[49px] py-1.5 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
             swing === 'swing'
               ? 'bg-amber-500 text-slate-900 shadow-amber-500/40'
               : 'bg-amber-900/50 border border-amber-700 text-amber-300 hover:bg-amber-800/60'
@@ -115,8 +115,8 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
         </button>
       </div>
 
-      {/* Strike zone grid */}
-      <div className="flex-1" style={{ maxWidth: 205 }}>
+      {/* Strike zone grid — expanded to fill freed space */}
+      <div className="flex-1" style={{ maxWidth: 248 }}>
         <div
           className="grid gap-0.5 p-0.5 bg-slate-900 rounded-xl border border-slate-700"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}
@@ -162,12 +162,12 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
         </div>
       </div>
 
-      {/* Right column: LHB icon + Looking button (25% larger, blue accent) */}
+      {/* Right column: LHB icon + Looking button (reduced 30%) */}
       <div className="flex flex-col items-center gap-1.5">
         <BatterIcon hand="L" selected={batterHand === 'L'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'L' ? null : 'L')} />
         <button
           onClick={() => onSetSwing('no-swing')}
-          className={`w-[70px] py-2.5 rounded-xl text-[21px] font-black tracking-wide transition-all shadow-md ${
+          className={`w-[49px] py-1.5 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
             swing === 'no-swing'
               ? 'bg-amber-500 text-slate-900 shadow-amber-500/40'
               : 'bg-amber-900/50 border border-amber-700 text-amber-300 hover:bg-amber-800/60'

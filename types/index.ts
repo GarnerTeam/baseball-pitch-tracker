@@ -9,7 +9,7 @@ export const PITCH_TYPE_COLORS: Record<PitchType, string> = {
 };
 
 export type SwingResult = 'swing' | 'no-swing';
-export type ContactType = 'foul' | 'foul-tip' | 'in-play' | null;
+export type ContactType = 'foul' | 'foul-tip' | 'in-play' | 'dropped-third' | null;
 
 export type PitchOutcome =
   | 'ball'

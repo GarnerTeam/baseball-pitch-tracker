@@ -227,6 +227,7 @@ export function PitchScreen({
   const lineupIsEmpty = !lineup.some(p => p?.name?.trim());
 
   const [showFoulModal, setShowFoulModal] = useState(false);
+  const [showDroppedThirdModal, setShowDroppedThirdModal] = useState(false);
   const [showBatterHistory, setShowBatterHistory] = useState(false);
   const [showPitcherStats, setShowPitcherStats] = useState(false);
 
@@ -261,6 +262,10 @@ export function PitchScreen({
   const handleSetContact = (c: ContactType) => {
     if (c === 'foul') {
       setShowFoulModal(true);
+      return;
+    }
+    if (c === 'dropped-third') {
+      setShowDroppedThirdModal(true);
       return;
     }
     onSetContact(c);
@@ -380,10 +385,21 @@ export function PitchScreen({
       {showFoulModal && (
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
           <div className="bg-slate-800 rounded-2xl p-5 w-full max-w-xs border border-slate-600 space-y-4">
-            <div className="text-center">
-              <p className="text-white font-bold text-[24px]">Foul Ball</p>
-              <p className="text-slate-400 text-[21px] mt-1">Was it caught for an out?</p>
+            {/* Header with X close button */}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-white font-bold text-[24px]">Foul Ball</p>
+                <p className="text-slate-400 text-[18px] mt-0.5">Was it caught for an out?</p>
+              </div>
+              <button
+                onClick={() => setShowFoulModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-[20px] font-bold flex items-center justify-center flex-shrink-0 ml-2"
+              >
+                ×
+              </button>
             </div>
+
+            {/* Yes / No buttons */}
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => {
@@ -406,6 +422,70 @@ export function PitchScreen({
                 ✗ No — Foul
               </button>
             </div>
+
+            {/* Foul Tip to Glove — only shown with 2 strikes */}
+            {strikes >= 2 && (
+              <button
+                onClick={() => {
+                  setShowFoulModal(false);
+                  onSetContact('foul-tip');
+                  onRecordPitch();
+                }}
+                className="w-full py-3 rounded-xl text-[19px] font-bold bg-amber-700 hover:bg-amber-600 text-white"
+              >
+                ▲ Foul Tip to Glove — Strikeout
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Dropped 3rd Strike Modal ── */}
+      {showDroppedThirdModal && (
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
+          <div className="bg-slate-800 rounded-2xl p-5 w-full max-w-xs border border-slate-600 space-y-4">
+            {/* Header with X close button */}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-white font-bold text-[24px]">Dropped 3rd Strike</p>
+                <p className="text-slate-400 text-[18px] mt-0.5">Is the batter safe at first?</p>
+              </div>
+              <button
+                onClick={() => setShowDroppedThirdModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-[20px] font-bold flex items-center justify-center flex-shrink-0 ml-2"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Safe at First */}
+              <button
+                onClick={() => {
+                  setShowDroppedThirdModal(false);
+                  onSetContact('in-play');
+                  onRecordPitch();
+                  onSetBase('first', true);
+                }}
+                className="py-3 rounded-xl text-[21px] font-bold bg-emerald-700 hover:bg-emerald-600 text-white"
+              >
+                ✓ Safe
+              </button>
+              {/* Out */}
+              <button
+                onClick={() => {
+                  setShowDroppedThirdModal(false);
+                  onSetContact('foul-tip');
+                  onRecordPitch();
+                }}
+                className="py-3 rounded-xl text-[21px] font-bold bg-red-700 hover:bg-red-600 text-white"
+              >
+                ✗ Out
+              </button>
+            </div>
+            <p className="text-slate-500 text-[14px] text-center">
+              Safe → batter reaches 1B · Out → strikeout recorded
+            </p>
           </div>
         </div>
       )}

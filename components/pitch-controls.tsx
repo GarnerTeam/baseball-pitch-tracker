@@ -78,14 +78,20 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
               </span>
             </button>
 
-            {/* Foul Tip */}
+            {/* Dropped 3rd Strike — replaces Foul Tip */}
             <button
-              onClick={() => onSetContact('foul-tip')}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300`}
+              onClick={() => onSetContact('dropped-third')}
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+                strikes >= 2
+                  ? 'bg-purple-900 hover:bg-purple-800 text-purple-200'
+                  : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
+              }`}
+              disabled={strikes < 2}
+              title={strikes < 2 ? 'Only available on strike 3' : 'Dropped 3rd Strike'}
             >
-              <span className="text-[22px] font-black leading-none">▲</span>
-              <span className="text-[15px] font-bold leading-none">
-                {strikes >= 2 ? 'Tip ⚡' : 'Tip'}
+              <span className="text-[22px] font-black leading-none">3↓</span>
+              <span className="text-[13px] font-bold leading-none text-center leading-tight">
+                {strikes >= 2 ? 'Drop 3K' : 'Drop 3K'}
               </span>
             </button>
 
