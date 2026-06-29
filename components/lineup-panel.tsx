@@ -265,6 +265,59 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
   );
 }
 
+// ── Scout Share Modal ─────────────────────────────────────────────────────────
+function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose: () => void }) {
+  const scoutUrl = `https://scout.robertegarner.com?url=${encodeURIComponent(webhookUrl)}`;
+  const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(scoutUrl)}&bgcolor=0f172a&color=e2e8f0&margin=12`;
+  const [copied, setCopied] = useState(false);
+
+  function copyLink() {
+    navigator.clipboard.writeText(scoutUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm flex flex-col items-center gap-5"
+           onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="w-full flex items-center justify-between">
+          <p className="text-white font-bold text-[20px]">📡 Scout View</p>
+          <button onClick={onClose} className="text-slate-500 text-[26px] leading-none">×</button>
+        </div>
+
+        <p className="text-slate-400 text-[15px] text-center -mt-2">
+          Share this with coaches or parents. They scan once and see live game data — no setup needed.
+        </p>
+
+        {/* QR Code */}
+        <div className="rounded-xl overflow-hidden border border-slate-700">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qrSrc} alt="Scout View QR Code" width={220} height={220} />
+        </div>
+
+        {/* Copy link button */}
+        <button
+          onClick={copyLink}
+          className={`w-full py-3 rounded-xl text-[17px] font-bold transition-colors ${
+            copied
+              ? 'bg-emerald-700 text-white'
+              : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+          }`}
+        >
+          {copied ? '✓ Link Copied!' : '🔗 Copy Link'}
+        </button>
+
+        <p className="text-slate-600 text-[12px] text-center -mt-2">
+          Scout view refreshes every 30 seconds automatically
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Sheets URL Panel ──────────────────────────────────────────────────────────
 function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
   webhookUrl: string;
@@ -274,6 +327,7 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(webhookUrl);
+  const [showShare, setShowShare] = useState(false);
   const isConnected = !!webhookUrl?.trim();
 
   function save() {
@@ -317,13 +371,23 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
             )}
           </div>
           {isConnected && !editing && (
-            <button
-              onClick={() => { setVal(webhookUrl); setEditing(true); }}
-              className={`flex-shrink-0 px-3 h-9 rounded-lg border text-[15px] font-medium ${syncStatus && !syncStatus.ok ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}
-            >
-              {syncStatus && !syncStatus.ok ? 'Fix URL' : 'Change'}
-            </button>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowShare(true)}
+                className="px-3 h-9 rounded-lg border text-[15px] font-medium bg-indigo-900 border-indigo-700 text-indigo-200 hover:bg-indigo-800"
+                title="Share Scout View"
+              >
+                📡 Share
+              </button>
+              <button
+                onClick={() => { setVal(webhookUrl); setEditing(true); }}
+                className={`px-3 h-9 rounded-lg border text-[15px] font-medium ${syncStatus && !syncStatus.ok ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}
+              >
+                {syncStatus && !syncStatus.ok ? 'Fix URL' : 'Change'}
+              </button>
+            </div>
           )}
+          {showShare && <ScoutShareModal webhookUrl={webhookUrl} onClose={() => setShowShare(false)} />}
         </div>
 
         {isConnected && !editing && syncStatus && !syncStatus.ok && (

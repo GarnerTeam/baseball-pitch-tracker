@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
 import { PitchRowLite } from '@/lib/sheets';
 
@@ -189,6 +190,7 @@ const URL_KEY = 'scout-webhook-url';
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function ScoutClient() {
+  const searchParams  = useSearchParams();
   const [webhookUrl, setWebhookUrl] = useState('');
   const [urlInput, setUrlInput]     = useState('');
   const [game, setGame]             = useState<ScoutGame | null>(null);
@@ -201,9 +203,17 @@ export function ScoutClient() {
   const [historyBatter, setHistoryBatter] = useState<{ name: string; number: string; pitches: PitchRowLite[] } | null>(null);
 
   useEffect(() => {
+    // Auto-connect from ?url= query param (shared link / QR code flow)
+    const paramUrl = searchParams?.get('url');
+    if (paramUrl) {
+      localStorage.setItem(URL_KEY, paramUrl);
+      setWebhookUrl(paramUrl);
+      setUrlInput(paramUrl);
+      return;
+    }
     const saved = localStorage.getItem(URL_KEY);
     if (saved) { setWebhookUrl(saved); setUrlInput(saved); }
-  }, []);
+  }, [searchParams]);
 
   const fetchGame = useCallback(async (url: string) => {
     if (!url) return;
