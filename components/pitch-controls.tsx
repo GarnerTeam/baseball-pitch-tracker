@@ -28,17 +28,38 @@ const STRIKE_OUTCOMES = new Set([
   'called-strike', 'swinging-strike', 'foul', 'foul-tip', 'strikeout',
 ]);
 
-function bestStrikePitch(pitches: PitchRecord[]): { type: PitchType; pct: number } | null {
+function bestStrikePitch(
+  pitches: PitchRecord[]
+): { type: PitchType; zone: string; pct: number; sampleSize: number } | null {
   if (pitches.length === 0) return null;
   const types = ['FB', 'CB', 'SL', 'CH'] as PitchType[];
-  let best: { type: PitchType; pct: number } | null = null;
+
+  let best: { type: PitchType; zone: string; pct: number; sampleSize: number } | null = null;
+
   for (const t of types) {
-    const group = pitches.filter(p => p.pitchType === t);
-    if (group.length < 1) continue;
-    const strikes = group.filter(p => STRIKE_OUTCOMES.has(p.outcome)).length;
-    const pct = Math.round((strikes / group.length) * 100);
-    if (!best || pct > best.pct) best = { type: t, pct };
+    const byType = pitches.filter(p => p.pitchType === t);
+    if (byType.length === 0) continue;
+
+    // Group by zone label
+    const zoneMap = new Map<string, { total: number; strikes: number }>();
+    for (const p of byType) {
+      const z = zoneShort(p.location);
+      const entry = zoneMap.get(z) ?? { total: 0, strikes: 0 };
+      entry.total++;
+      if (STRIKE_OUTCOMES.has(p.outcome)) entry.strikes++;
+      zoneMap.set(z, entry);
+    }
+
+    // Find the zone with the highest strike rate for this pitch type
+    for (const [zone, { total, strikes }] of zoneMap.entries()) {
+      const pct = Math.round((strikes / total) * 100);
+      // Prefer higher %, break ties by sample size
+      if (!best || pct > best.pct || (pct === best.pct && total > best.sampleSize)) {
+        best = { type: t, zone, pct, sampleSize: total };
+      }
+    }
   }
+
   return best;
 }
 
@@ -59,10 +80,11 @@ function IntelCard({ label, pitches }: { label: string; pitches: PitchRecord[] }
           {rec && (
             <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
               <span className="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Best K</span>
-              <span className="text-[13px] font-black ml-1" style={{ color: PITCH_TYPE_COLORS[rec.type] }}>
+              <span className="text-[13px] font-black ml-1 shrink-0" style={{ color: PITCH_TYPE_COLORS[rec.type] }}>
                 {rec.type}
               </span>
-              <span className="text-[12px] font-bold text-emerald-400 ml-auto">{rec.pct}%</span>
+              <span className="text-[11px] text-slate-400 truncate flex-1 ml-1">{rec.zone}</span>
+              <span className="text-[12px] font-bold text-emerald-400 shrink-0 ml-1">{rec.pct}%</span>
             </div>
           )}
           <div className="space-y-[3px]">
