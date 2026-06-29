@@ -24,8 +24,27 @@ function zoneShort(loc: PitchRecord['location']): string {
   return v ? `B:${v}` : h ? `B:${h}` : 'Ball';
 }
 
+const STRIKE_OUTCOMES = new Set([
+  'called-strike', 'swinging-strike', 'foul', 'foul-tip', 'strikeout',
+]);
+
+function bestStrikePitch(pitches: PitchRecord[]): { type: PitchType; pct: number } | null {
+  if (pitches.length === 0) return null;
+  const types = ['FB', 'CB', 'SL', 'CH'] as PitchType[];
+  let best: { type: PitchType; pct: number } | null = null;
+  for (const t of types) {
+    const group = pitches.filter(p => p.pitchType === t);
+    if (group.length < 1) continue;
+    const strikes = group.filter(p => STRIKE_OUTCOMES.has(p.outcome)).length;
+    const pct = Math.round((strikes / group.length) * 100);
+    if (!best || pct > best.pct) best = { type: t, pct };
+  }
+  return best;
+}
+
 function IntelCard({ label, pitches }: { label: string; pitches: PitchRecord[] }) {
   const shown = pitches.slice(0, 5);
+  const rec = bestStrikePitch(pitches);
   return (
     <div className="bg-slate-900 rounded-xl border border-slate-800 p-2">
       <div className="flex items-center justify-between mb-1">
@@ -35,19 +54,31 @@ function IntelCard({ label, pitches }: { label: string; pitches: PitchRecord[] }
       {shown.length === 0 ? (
         <p className="text-slate-700 text-[12px] text-center py-1">—</p>
       ) : (
-        <div className="space-y-[3px]">
-          {shown.map((p, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <span className="text-[12px] font-black w-7 shrink-0" style={{ color: PITCH_TYPE_COLORS[p.pitchType] }}>
-                {p.pitchType}
+        <>
+          {/* Best pitch for a strike */}
+          {rec && (
+            <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Best K</span>
+              <span className="text-[13px] font-black ml-1" style={{ color: PITCH_TYPE_COLORS[rec.type] }}>
+                {rec.type}
               </span>
-              <span className="text-slate-500 text-[11px] flex-1 truncate">{zoneShort(p.location)}</span>
-              <span className="text-[11px] font-semibold" style={{ color: OUTCOME_CLR[p.outcome] ?? '#94a3b8' }}>
-                {OUTCOME_SHORT[p.outcome] ?? p.outcome}
-              </span>
+              <span className="text-[12px] font-bold text-emerald-400 ml-auto">{rec.pct}%</span>
             </div>
-          ))}
-        </div>
+          )}
+          <div className="space-y-[3px]">
+            {shown.map((p, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <span className="text-[12px] font-black w-7 shrink-0" style={{ color: PITCH_TYPE_COLORS[p.pitchType] }}>
+                  {p.pitchType}
+                </span>
+                <span className="text-slate-500 text-[11px] flex-1 truncate">{zoneShort(p.location)}</span>
+                <span className="text-[11px] font-semibold" style={{ color: OUTCOME_CLR[p.outcome] ?? '#94a3b8' }}>
+                  {OUTCOME_SHORT[p.outcome] ?? p.outcome}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
