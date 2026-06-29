@@ -89,6 +89,7 @@ type GameAction =
   | { type: 'CHANGE_PITCHER'; pitcher: Player }
   | { type: 'RESET_COUNT' }
   | { type: 'END_AT_BAT' }
+  | { type: 'HIT_BY_PITCH' }
   | { type: 'TOGGLE_OVERLAY' }
   | { type: 'SET_OVERLAY_FILTER'; filter: PitchType | 'all' }
   | { type: 'SET_TAB'; tab: GameState['activeTab'] }
@@ -361,6 +362,26 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         phase: 'pitching',
         pendingPitch: resetPendingPitch(state),
       };
+
+    case 'HIT_BY_PITCH': {
+      if (!state.currentAtBat) return state;
+      const batter = state.lineup[state.currentBatterIndex];
+      const ended: AtBat = {
+        ...state.currentAtBat,
+        isComplete: true,
+        result: 'hit-by-pitch',
+        completedAt: new Date().toISOString(),
+      };
+      // Set first base occupied BEFORE advancing so advanceToNextBatter preserves it
+      const stateWithBase: GameState = {
+        ...state,
+        currentAtBat: ended,
+        baseState: { ...state.baseState, first: true },
+      };
+      const hbpNote = { message: `HBP! ${batter?.name ?? 'Batter'} takes first.`, type: 'info' as const };
+      const next = advanceToNextBatter(stateWithBase, ended);
+      return { ...next, notification: hbpNote };
+    }
 
     case 'NEXT_BATTER':
     case 'SKIP_BATTER':
@@ -725,6 +746,7 @@ export function useGame() {
         dispatch({ type: 'RECORD_HIT', hitData }), []),
       cancelHitMode: useCallback(() => dispatch({ type: 'CANCEL_HIT_MODE' }), []),
       nextBatter: useCallback(() => dispatch({ type: 'NEXT_BATTER' }), []),
+      hitByPitch: useCallback(() => dispatch({ type: 'HIT_BY_PITCH' }), []),
       prevBatter: useCallback(() => dispatch({ type: 'PREV_BATTER' }), []),
       skipBatter: useCallback(() => dispatch({ type: 'SKIP_BATTER' }), []),
       addBatter: useCallback((player: Player) =>

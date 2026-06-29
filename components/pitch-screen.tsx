@@ -26,6 +26,7 @@ interface PitchScreenProps {
   onTabChange: (tab: GameState['activeTab']) => void;
   onSetBase: (base: keyof BaseState, occupied: boolean) => void;
   onSetOuts: (count: 0 | 1 | 2) => void;
+  onHitByPitch: () => void;
 }
 
 const OVERLAY_FILTERS: (PitchType | 'all')[] = ['all', 'FB', 'CB', 'SL', 'CH'];
@@ -120,12 +121,14 @@ function getBallLabel(row: number, col: number, hand?: 'L' | 'R' | null): string
 
 // ── Base State Diamond ────────────────────────────────────────────────────────
 function BaseDiamond({
-  baseState, outsCount, onSetBase, onSetOuts,
+  baseState, outsCount, onSetBase, onSetOuts, overlayEnabled, onToggleOverlay,
 }: {
   baseState: BaseState;
   outsCount: 0 | 1 | 2;
   onSetBase: (base: keyof BaseState, occupied: boolean) => void;
   onSetOuts: (count: 0 | 1 | 2) => void;
+  overlayEnabled: boolean;
+  onToggleOverlay: () => void;
 }) {
   const baseBtn = (key: keyof BaseState, active: boolean) => (
     <button
@@ -159,6 +162,17 @@ function BaseDiamond({
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-white" style={{ width: 18, height: 16, clipPath: "polygon(0% 0%, 100% 0%, 100% 55%, 50% 100%, 0% 55%)" }} />
         </div>
       </div>
+      {/* Overlay toggle — infrequent use, lives here to free the bottom row */}
+      <button
+        onClick={onToggleOverlay}
+        className={`flex flex-col items-center gap-0 px-2 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors ${
+          overlayEnabled ? 'bg-blue-700 text-blue-100' : 'bg-slate-800 text-slate-500 hover:text-slate-300'
+        }`}
+      >
+        <span className="text-[15px] leading-none">👁</span>
+        <span className="leading-none mt-0.5">Overlay</span>
+      </button>
+
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Outs</span>
         <div className="flex gap-1.5 items-center">
@@ -187,7 +201,7 @@ export function PitchScreen({
   state, onSetPitchType, onSetLocation, onSetSwing, onSetContact, onRecordPitch,
   onNextBatter, onPrevBatter, onUndoPitch, onToggleOverlay, onSetOverlayFilter, onSetBatterHand,
   onTabChange,
-  onSetBase, onSetOuts,
+  onSetBase, onSetOuts, onHitByPitch,
 }: PitchScreenProps) {
   const { currentAtBat, pendingPitch, overlayEnabled, overlayFilter, lineup, currentBatterIndex, pitcher, allAtBats, batterHand } = state;
   const balls   = currentAtBat?.balls ?? 0;
@@ -228,6 +242,7 @@ export function PitchScreen({
 
   const [showFoulModal, setShowFoulModal] = useState(false);
   const [showDroppedThirdModal, setShowDroppedThirdModal] = useState(false);
+  const [showDroppedThirdLookingModal, setShowDroppedThirdLookingModal] = useState(false);
   const [showBatterHistory, setShowBatterHistory] = useState(false);
   const [showPitcherStats, setShowPitcherStats] = useState(false);
 
@@ -256,7 +271,14 @@ export function PitchScreen({
       return;
     }
     onSetSwing(s);
-    if (s === 'no-swing') onRecordPitch(); // Looking: record immediately
+    if (s === 'no-swing') {
+      // At strike 2: offer dropped 3rd strike option before recording
+      if (strikes >= 2) {
+        setShowDroppedThirdLookingModal(true);
+      } else {
+        onRecordPitch(); // Looking: record immediately
+      }
+    }
   };
 
   const handleSetContact = (c: ContactType) => {
@@ -283,6 +305,8 @@ export function PitchScreen({
         outsCount={state.outsCount}
         onSetBase={onSetBase}
         onSetOuts={onSetOuts}
+        overlayEnabled={overlayEnabled}
+        onToggleOverlay={onToggleOverlay}
       />
       <PlayerHeader
         pitcher={pitcher}
@@ -363,7 +387,7 @@ export function PitchScreen({
         />
       </div>
 
-      {/* Bottom row: Next Batter | ← Prev Batter | Overlay */}
+      {/* Bottom row: ← Prev Batter | Next Batter › | ⚾ HBP */}
       <div className="px-3 pb-3 pt-1 flex-shrink-0">
         <div className="flex gap-1.5">
           <button onClick={onPrevBatter} className="flex-1 h-9 rounded-lg text-[18px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300">
@@ -373,10 +397,10 @@ export function PitchScreen({
             Next Batter ›
           </button>
           <button
-            onClick={onToggleOverlay}
-            className={`flex-1 h-9 rounded-lg text-[18px] font-medium transition-colors ${overlayEnabled ? 'bg-blue-700 hover:bg-blue-600 text-blue-100' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'}`}
+            onClick={onHitByPitch}
+            className="flex-1 h-9 rounded-lg text-[18px] font-medium bg-amber-700 hover:bg-amber-600 text-amber-100"
           >
-            👁 Overlay
+            ⚾ HBP
           </button>
         </div>
       </div>
@@ -485,6 +509,56 @@ export function PitchScreen({
             </div>
             <p className="text-slate-500 text-[14px] text-center">
               Safe → batter reaches 1B · Out → strikeout recorded
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Dropped 3rd Strike — Looking Modal ── */}
+      {showDroppedThirdLookingModal && (
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50 px-6">
+          <div className="bg-slate-800 rounded-2xl p-5 w-full max-w-xs border border-slate-600 space-y-4">
+            {/* Header with X close */}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-white font-bold text-[24px]">Called Strike 3</p>
+                <p className="text-slate-400 text-[18px] mt-0.5">Ball dropped by catcher?</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowDroppedThirdLookingModal(false);
+                  onSetSwing(null); // Reset — pitch not yet recorded
+                }}
+                className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-[20px] font-bold flex items-center justify-center flex-shrink-0 ml-2"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Dropped — Batter Safe → in-play → hit screen */}
+            <button
+              onClick={() => {
+                setShowDroppedThirdLookingModal(false);
+                onSetContact('in-play');
+                onRecordPitch();
+              }}
+              className="w-full py-3 rounded-xl text-[21px] font-bold bg-emerald-700 hover:bg-emerald-600 text-white"
+            >
+              ✓ Dropped — Batter Safe
+            </button>
+
+            {/* Clean catch / out — normal strikeout looking */}
+            <button
+              onClick={() => {
+                setShowDroppedThirdLookingModal(false);
+                onRecordPitch();
+              }}
+              className="w-full py-3 rounded-xl text-[21px] font-bold bg-slate-700 hover:bg-slate-600 text-white"
+            >
+              ✗ Clean Catch — K̲
+            </button>
+            <p className="text-slate-500 text-[14px] text-center">
+              Safe → batter advances to hit screen · Clean → strikeout looking
             </p>
           </div>
         </div>

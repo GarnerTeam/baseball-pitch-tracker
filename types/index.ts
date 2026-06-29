@@ -82,7 +82,7 @@ export interface AtBat {
   pitches: PitchRecord[];
   balls: number;
   strikes: number;
-  result?: 'walk' | 'strikeout' | 'in-play' | 'manual-end';
+  result?: 'walk' | 'strikeout' | 'in-play' | 'manual-end' | 'hit-by-pitch';
   isComplete: boolean;
   startedAt: string;
   completedAt?: string;
