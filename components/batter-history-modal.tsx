@@ -740,11 +740,11 @@ export function BatterHistoryModal({
                                 }))
                                 .filter(row => row.total > 0)
                                 .sort((a, b) => b.total - a.total)
-                                .slice(0, 3);
+                                .slice(0, 4);
                               return (
                                 <>
                                   {/* Damage count */}
-                                  <span className="text-white font-black leading-none" style={{ fontSize: 44 }}>{dmg}</span>
+                                  <span className="text-white font-black leading-none" style={{ fontSize: 26 }}>{dmg}</span>
                                   {/* Pitch → Result rows */}
                                   <div className="flex flex-col items-center" style={{ gap: 2, width: '100%' }}>
                                     {pitchRows.map(({ pt, total, results, res }) => (
