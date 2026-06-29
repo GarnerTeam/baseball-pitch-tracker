@@ -65,8 +65,11 @@ function BatterIcon({ hand, selected, noneSelected, onClick }: { hand: 'L' | 'R'
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 px-1 py-1 rounded-lg transition-all ${blinkClass}`}
-      style={{ opacity: noneSelected ? undefined : selected ? 1 : 0.2 }}
+      className={`flex flex-col items-center gap-1 px-1 py-1 rounded-lg ${blinkClass}`}
+      style={{
+        opacity: noneSelected ? undefined : selected ? 1 : 0.2,
+        animation: noneSelected ? undefined : 'none',
+      }}
     >
       <svg
         viewBox="0 0 28 50"
