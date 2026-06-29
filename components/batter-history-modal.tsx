@@ -300,6 +300,7 @@ export function BatterHistoryModal({
     if (isContact)   locStats[loc].contacts++;
     if (isInPlay) {
       locStats[loc].inPlay++;
+      inPlayCount++;
       locStats[loc].typeInPlay[pt] = (locStats[loc].typeInPlay[pt] ?? 0) + 1;
       const hr = (p.hitResult ?? '').trim();
       if (hr) {
