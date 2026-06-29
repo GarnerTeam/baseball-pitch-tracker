@@ -471,6 +471,7 @@ export function LineupPanel({
   );
   const [pName, setPName] = useState('');
   const [pNum, setPNum]   = useState('');
+  const [pHand, setPHand] = useState<'R' | 'L' | null>(null);
 
   // ── Pitcher stats popup state ─────────────────────────────────────────────
   const [statsPitcher, setStatsPitcher] = useState<Player | null>(null);
@@ -516,17 +517,19 @@ export function LineupPanel({
   function openPitcherNew() {
     setPName('');
     setPNum('');
+    setPHand(null);
     setPitcherMode('new');
   }
   function openPitcherEdit() {
     setPName(pitcher.name);
     setPNum(pitcher.number);
+    setPHand((pitcher.hand as 'R' | 'L' | null) ?? null);
     setPitcherMode('edit');
   }
   function savePitcher() {
     if (!pName.trim()) return;
     const id = pitcherMode === 'edit' ? pitcher.id : crypto.randomUUID();
-    onChangePitcher({ id, name: pName.trim(), number: pNum.trim() });
+    onChangePitcher({ id, name: pName.trim(), number: pNum.trim(), hand: pHand ?? undefined });
     setPitcherMode('idle');
   }
 
@@ -694,6 +697,13 @@ export function LineupPanel({
               </span>
               <span className="flex-1 font-medium text-[21px]">{pitcher.name || <span className="text-slate-500 italic">No pitcher set</span>}</span>
               <span className="text-slate-500 text-[18px]">{getPitchCount(pitcher.name, pitcher.number)} pitches</span>
+              {pitcher.hand && (
+                <span className={`text-[15px] font-bold px-1.5 py-0.5 rounded ${
+                  pitcher.hand === 'R' ? 'bg-blue-900 text-blue-300' : 'bg-amber-900 text-amber-300'
+                }`}>
+                  {pitcher.hand === 'R' ? 'RHP' : 'LHP'}
+                </span>
+              )}
               <span className="text-slate-600 text-[15px]">📊</span>
               {!readOnly && <button
                 onClick={e => { e.stopPropagation(); openPitcherEdit(); }}
@@ -725,6 +735,22 @@ export function LineupPanel({
                 className="flex-1 h-10 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 px-3 outline-none focus:border-blue-500"
                 autoFocus
               />
+            </div>
+            {/* Pitcher handedness toggle */}
+            <div className="flex gap-2">
+              {(['R', 'L'] as const).map(h => (
+                <button
+                  key={h}
+                  onClick={() => setPHand(prev => prev === h ? null : h)}
+                  className={`flex-1 h-9 rounded-lg text-[18px] font-bold transition-colors ${
+                    pHand === h
+                      ? (h === 'R' ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white')
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }`}
+                >
+                  {h === 'R' ? 'RHP' : 'LHP'}
+                </button>
+              ))}
             </div>
             <button
               onClick={savePitcher}

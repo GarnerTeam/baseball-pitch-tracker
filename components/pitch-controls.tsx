@@ -1,6 +1,57 @@
 'use client';
-import { PitchType, SwingResult, ContactType } from '@/types';
+import { PitchType, SwingResult, ContactType, PitchRecord } from '@/types';
 import { PITCH_TYPE_LABELS, PITCH_TYPE_COLORS } from '@/types';
+
+// ── Intel card helpers ─────────────────────────────────────────────────────────
+const OUTCOME_SHORT: Record<string, string> = {
+  ball: 'Ball', 'called-strike': 'Kl', 'swinging-strike': 'Ks',
+  foul: 'F', 'foul-tip': 'F✓', 'in-play': 'IP', walk: 'BB', strikeout: 'K',
+};
+const OUTCOME_CLR: Record<string, string> = {
+  ball: '#60a5fa', walk: '#38bdf8',
+  'called-strike': '#f87171', 'swinging-strike': '#f87171', strikeout: '#ef4444',
+  foul: '#fbbf24', 'foul-tip': '#fcd34d', 'in-play': '#34d399',
+};
+function zoneShort(loc: PitchRecord['location']): string {
+  if (!loc) return '?';
+  if (loc.zone === 'strike') {
+    const N = ['Hi-In','High','Hi-Out','Mid-In','Ctr','Mid-Out','Lo-In','Low','Lo-Out'];
+    return N[(loc.zoneNumber ?? 1) - 1] ?? 'Z?';
+  }
+  const v = loc.row === 0 ? 'Hi' : loc.row === 4 ? 'Lo' : '';
+  const h = loc.col === 0 ? 'In' : loc.col === 4 ? 'Out' : '';
+  if (v && h) return `B:${v}-${h}`;
+  return v ? `B:${v}` : h ? `B:${h}` : 'Ball';
+}
+
+function IntelCard({ label, pitches }: { label: string; pitches: PitchRecord[] }) {
+  const shown = pitches.slice(0, 5);
+  return (
+    <div className="bg-slate-900 rounded-xl border border-slate-800 p-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wide">{label}</span>
+        <span className="text-slate-600 text-[11px]">{pitches.length}×</span>
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-slate-700 text-[12px] text-center py-1">—</p>
+      ) : (
+        <div className="space-y-[3px]">
+          {shown.map((p, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <span className="text-[12px] font-black w-7 shrink-0" style={{ color: PITCH_TYPE_COLORS[p.pitchType] }}>
+                {p.pitchType}
+              </span>
+              <span className="text-slate-500 text-[11px] flex-1 truncate">{zoneShort(p.location)}</span>
+              <span className="text-[11px] font-semibold" style={{ color: OUTCOME_CLR[p.outcome] ?? '#94a3b8' }}>
+                {OUTCOME_SHORT[p.outcome] ?? p.outcome}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface PitchControlsProps {
   pitchType: PitchType | null;
@@ -11,6 +62,8 @@ interface PitchControlsProps {
   onSwingStrike: () => void;
   balls: number;
   strikes: number;
+  firstPitches: PitchRecord[];
+  secondPitches: PitchRecord[];
 }
 
 // Order: FB=1, CB=2, SL=3, CH=4
@@ -25,7 +78,7 @@ const PITCH_TYPES: { type: PitchType; num: number }[] = [
 // py-1 + text sizes below ≈ 25% shorter than the original py-2 layout
 const BTN_H = 'py-[3px]';
 
-export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSetContact, onSwingStrike, balls, strikes }: PitchControlsProps) {
+export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSetContact, onSwingStrike, balls, strikes, firstPitches, secondPitches }: PitchControlsProps) {
   return (
     <div className="space-y-3 pt-2">
       {/* Pitch Type */}
@@ -52,6 +105,14 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
           </p>
         )}
       </div>
+
+      {/* 1st / 2nd pitch intel cards */}
+      {(firstPitches.length > 0 || secondPitches.length > 0) && (
+        <div className="grid grid-cols-2 gap-2">
+          <IntelCard label="1st Pitch" pitches={firstPitches} />
+          <IntelCard label="2nd Pitch" pitches={secondPitches} />
+        </div>
+      )}
 
       {/* Contact — shown after Swing is selected, same height as pitch type buttons */}
       {swing === 'swing' && (
