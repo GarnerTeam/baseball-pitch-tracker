@@ -102,7 +102,7 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
 
       {/* Left column: RHB icon + Swing button (reduced 30%) */}
       <div className="flex flex-col items-center gap-1.5 w-[58px]">
-        <BatterIcon hand="R" selected={batterHand === 'R'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'R' ? null : 'R')} />
+        <BatterIcon hand="R" selected={batterHand === 'R'} noneSelected={batterHand === null} onClick={() => onSetBatterHand('R')} />
         <button
           onClick={() => onSetSwing('swing')}
           className={`w-[49px] py-2 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
@@ -164,7 +164,7 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
 
       {/* Right column: LHB icon + Looking button (reduced 30%) */}
       <div className="flex flex-col items-center gap-1.5 w-[58px]">
-        <BatterIcon hand="L" selected={batterHand === 'L'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'L' ? null : 'L')} />
+        <BatterIcon hand="L" selected={batterHand === 'L'} noneSelected={batterHand === null} onClick={() => onSetBatterHand('L')} />
         <button
           onClick={() => onSetSwing('no-swing')}
           className={`w-[49px] py-2 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${

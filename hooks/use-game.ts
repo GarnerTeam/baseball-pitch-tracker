@@ -152,6 +152,7 @@ function advanceToNextBatter(state: GameState, completedAtBat: AtBat): GameState
     pendingPitch: resetPendingPitch(state),
     outsCount: newOuts,
     baseState: newBases,
+    batterHand: state.lineup[nextIndex]?.hand ?? null,
     notification: sideNotification ?? state.notification,
     lastCompletedAtBatSnapshot: {
       previousBatterIndex: safeCurrentIdx,
@@ -499,6 +500,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         allAtBats: updatedAll,
         phase: 'pitching',
         pendingPitch: resetPendingPitch(state),
+        batterHand: state.lineup[prevIndex]?.hand ?? null,
       };
     }
 
