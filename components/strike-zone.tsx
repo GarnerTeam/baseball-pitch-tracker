@@ -101,11 +101,11 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
     <div className="flex items-center justify-center gap-1">
 
       {/* Left column: RHB icon + Swing button (reduced 30%) */}
-      <div className="flex flex-col items-center gap-1.5">
+      <div className="flex flex-col items-center gap-1.5 w-[58px]">
         <BatterIcon hand="R" selected={batterHand === 'R'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'R' ? null : 'R')} />
         <button
           onClick={() => onSetSwing('swing')}
-          className={`w-[49px] py-1.5 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
+          className={`w-[49px] py-2 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
             swing === 'swing'
               ? 'bg-amber-500 text-slate-900 shadow-amber-500/40'
               : 'bg-amber-900/50 border border-amber-700 text-amber-300 hover:bg-amber-800/60'
@@ -116,7 +116,7 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
       </div>
 
       {/* Strike zone grid — expanded to fill freed space */}
-      <div className="flex-1" style={{ maxWidth: 248 }}>
+      <div className="flex-1" style={{ maxWidth: 236 }}>
         <div
           className="grid gap-0.5 p-0.5 bg-slate-900 rounded-xl border border-slate-700"
           style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}
@@ -163,11 +163,11 @@ export function StrikeZone({ selected, onSelect, currentAtBatPitches, historical
       </div>
 
       {/* Right column: LHB icon + Looking button (reduced 30%) */}
-      <div className="flex flex-col items-center gap-1.5">
+      <div className="flex flex-col items-center gap-1.5 w-[58px]">
         <BatterIcon hand="L" selected={batterHand === 'L'} noneSelected={batterHand === null} onClick={() => onSetBatterHand(batterHand === 'L' ? null : 'L')} />
         <button
           onClick={() => onSetSwing('no-swing')}
-          className={`w-[49px] py-1.5 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
+          className={`w-[49px] py-2 rounded-xl text-[15px] font-black tracking-wide transition-all shadow-md ${
             swing === 'no-swing'
               ? 'bg-amber-500 text-slate-900 shadow-amber-500/40'
               : 'bg-amber-900/50 border border-amber-700 text-amber-300 hover:bg-amber-800/60'

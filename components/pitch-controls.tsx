@@ -23,7 +23,7 @@ const PITCH_TYPES: { type: PitchType; num: number }[] = [
 
 // Shared button height class — both pitch type and contact buttons use this
 // py-1 + text sizes below ≈ 25% shorter than the original py-2 layout
-const BTN_H = 'py-1';
+const BTN_H = 'py-[3px]';
 
 export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSetContact, onSwingStrike, balls, strikes }: PitchControlsProps) {
   return (
@@ -36,7 +36,7 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
             <button
               key={t}
               onClick={() => onSetPitchType(t)}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0 ${
                 pitchType === t ? 'text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
               }`}
               style={pitchType === t ? { backgroundColor: PITCH_TYPE_COLORS[t] } : {}}
@@ -61,7 +61,7 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
             {/* Swing Strike */}
             <button
               onClick={onSwingStrike}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 bg-red-900 hover:bg-red-800 text-red-200`}
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0 bg-red-900 hover:bg-red-800 text-red-200`}
             >
               <span className="text-[22px] font-black leading-none">☒</span>
               <span className="text-[15px] font-bold leading-none">Miss</span>
@@ -70,7 +70,7 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
             {/* Foul Ball */}
             <button
               onClick={() => onSetContact('foul')}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300`}
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0 bg-slate-800 hover:bg-slate-700 text-amber-300`}
             >
               <span className="text-[22px] font-black leading-none">F</span>
               <span className="text-[15px] font-bold leading-none">
@@ -81,7 +81,7 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
             {/* Dropped 3rd Strike — replaces Foul Tip */}
             <button
               onClick={() => onSetContact('dropped-third')}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0 ${
                 strikes >= 2
                   ? 'bg-purple-900 hover:bg-purple-800 text-purple-200'
                   : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
@@ -98,7 +98,7 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
             {/* In Play */}
             <button
               onClick={() => onSetContact('in-play')}
-              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0.5 bg-emerald-800 hover:bg-emerald-700 text-emerald-100`}
+              className={`${BTN_H} rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-0 bg-emerald-800 hover:bg-emerald-700 text-emerald-100`}
             >
               <span className="text-[22px] font-black leading-none">→</span>
               <span className="text-[15px] font-bold leading-none">In Play</span>
