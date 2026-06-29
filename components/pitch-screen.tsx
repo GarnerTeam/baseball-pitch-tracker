@@ -272,8 +272,9 @@ export function PitchScreen({
     }
     onSetSwing(s);
     if (s === 'no-swing') {
-      // At strike 2: offer dropped 3rd strike option before recording
-      if (strikes >= 2) {
+      // At strike 2 in the strike zone: offer dropped 3rd strike option before recording
+      // Ball zones can never produce a called strike 3, so skip the modal there
+      if (strikes >= 2 && pendingPitch.location?.zone === 'strike') {
         setShowDroppedThirdLookingModal(true);
       } else {
         onRecordPitch(); // Looking: record immediately
