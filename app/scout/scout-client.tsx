@@ -194,20 +194,22 @@ export function ScoutClient() {
 
   // Lazy-initialize from ?url= param or localStorage synchronously on first render.
   // This prevents the "enter URL" setup screen from flashing before the useEffect fires.
+  const DEFAULT_URL = process.env.NEXT_PUBLIC_SCOUT_WEBHOOK_URL ?? '';
+
   const [webhookUrl, setWebhookUrl] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
+    if (typeof window === 'undefined') return DEFAULT_URL;
     const params = new URLSearchParams(window.location.search);
     const paramUrl = params.get('url');
     if (paramUrl) {
       try { localStorage.setItem(URL_KEY, paramUrl); } catch {}
       return paramUrl;
     }
-    try { return localStorage.getItem(URL_KEY) ?? ''; } catch { return ''; }
+    try { return localStorage.getItem(URL_KEY) ?? DEFAULT_URL; } catch { return DEFAULT_URL; }
   });
   const [urlInput, setUrlInput] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
+    if (typeof window === 'undefined') return DEFAULT_URL;
     const params = new URLSearchParams(window.location.search);
-    return params.get('url') ?? ((() => { try { return localStorage.getItem(URL_KEY) ?? ''; } catch { return ''; } })());
+    return params.get('url') ?? ((() => { try { return localStorage.getItem(URL_KEY) ?? DEFAULT_URL; } catch { return DEFAULT_URL; } })());
   });
   const [game, setGame]             = useState<ScoutGame | null>(null);
   const [loading, setLoading]       = useState(false);
