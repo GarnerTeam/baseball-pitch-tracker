@@ -183,10 +183,12 @@ function getBatterHistory(batterName, batterNum) {
     var rowName = String(row[nameIdx] !== undefined ? row[nameIdx] : '').toLowerCase().trim();
     var rowNum  = String(row[numIdx]  !== undefined ? row[numIdx]  : '').trim();
 
-    // Match by name (case-insensitive) OR by jersey number
-    var nameMatch = nameLower && rowName === nameLower;
-    var numMatch  = batterNum  && rowNum  === batterNum;
-    if (!nameMatch && !numMatch) continue;
+    // Name must always match (case-insensitive).
+    // If a jersey number was also provided, it must also match — so a #13 on
+    // a different team never bleeds into a same-named batter's history, and
+    // a different batter wearing the same number never inflates counts.
+    if (!nameLower || rowName !== nameLower) continue;
+    if (batterNum && rowNum !== batterNum) continue;
 
     // Build a plain object with camelCase keys
     var obj = {};
