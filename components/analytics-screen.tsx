@@ -120,6 +120,35 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
 
   return (
     <>
+      {/* ── Performance Bar Chart ── */}
+      {(()=>{
+        const battersFaced = Object.keys(bStats).length;
+        const totalK  = Object.values(bStats).reduce((s,b)=>s+b.k,  0);
+        const totalBB = Object.values(bStats).reduce((s,b)=>s+b.bb, 0);
+        const maxVal  = Math.max(battersFaced, totalK, totalBB, 1);
+        const rows=[
+          {label:'Batters Faced',value:battersFaced,color:'#3b82f6'},
+          {label:'Strikeouts',   value:totalK,       color:'#ef4444'},
+          {label:'Walks',        value:totalBB,      color:'#22c55e'},
+        ];
+        return (
+          <div className='px-3 pt-3 pb-1'>
+            <p className='text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2'>Pitcher Performance</p>
+            <div className='bg-slate-900 rounded-xl p-3 border border-slate-700' style={{display:'flex',flexDirection:'column',gap:12}}>
+              {rows.map(row=>(
+                <div key={row.label} style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{color:'#94a3b8',fontSize:15,width:108,flexShrink:0}}>{row.label}</span>
+                  <div style={{flex:1,background:'#1e293b',borderRadius:9,overflow:'hidden',height:18}}>
+                    <div style={{width:row.value>0?Math.max((row.value/maxVal)*100,4)+'%':'0%',height:'100%',background:row.color,borderRadius:9}} />
+                  </div>
+                  <span style={{color:'white',fontSize:18,fontWeight:'bold',width:24,textAlign:'right',flexShrink:0}}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Summary Cards ── */}
       <div className="px-3 pt-3 grid grid-cols-4 gap-2">
         {[
