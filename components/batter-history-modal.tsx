@@ -19,6 +19,7 @@ interface PitchRow {
   hitY?: number | string;
   hitZone?: string;
   atBatNumber?: number | string;
+  pitchNumber?: number | string;
 }
 
 interface CellStat {
@@ -45,6 +46,54 @@ const ZONE_NAMES_LHB: Record<string, string> = {
 };
 
 // ── Color scale ───────────────────────────────────────────────────────────────
+// ── 1st / 2nd pitch intel helpers ────────────────────────────────────────────
+const OUTCOME_SHORT_MAP: Record<string, string> = {
+  ball: 'Ball', 'called-strike': 'Kl', 'swinging-strike': 'Ks',
+  foul: 'F', 'foul-tip': 'F✓', 'in-play': 'IP', walk: 'BB', strikeout: 'K',
+};
+const OUTCOME_CLR_MAP: Record<string, string> = {
+  ball: '#60a5fa', walk: '#38bdf8',
+  'called-strike': '#f87171', 'swinging-strike': '#f87171', strikeout: '#ef4444',
+  foul: '#fbbf24', 'foul-tip': '#fcd34d', 'in-play': '#34d399',
+};
+const STRIKE_SET = new Set([
+  'called-strike', 'swinging-strike', 'foul', 'foul-tip', 'strikeout',
+]);
+
+function pitchLocShort(loc?: string): string {
+  if (!loc) return '?';
+  if (loc.startsWith('Z')) {
+    const n = parseInt(loc.slice(1), 10);
+    const names = ['Hi-In','High','Hi-Out','Mid-In','Ctr','Mid-Out','Lo-In','Low','Lo-Out'];
+    return names[n - 1] ?? loc;
+  }
+  // Ball zone: strip leading 'B-'
+  return loc.startsWith('B-') ? loc.slice(2) : loc;
+}
+
+function bestStrikeRec(rows: PitchRow[]): { type: string; zone: string; pct: number } | null {
+  if (rows.length === 0) return null;
+  const types = ['FB','CB','SL','CH'];
+  let best: { type: string; zone: string; pct: number } | null = null;
+  for (const t of types) {
+    const byType = rows.filter(p => p.pitchType === t);
+    if (byType.length === 0) continue;
+    const zoneMap = new Map<string, { total: number; strikes: number }>();
+    for (const p of byType) {
+      const z = pitchLocShort(p.pitchLocation);
+      const e = zoneMap.get(z) ?? { total: 0, strikes: 0 };
+      e.total++;
+      if (STRIKE_SET.has(p.outcome ?? '')) e.strikes++;
+      zoneMap.set(z, e);
+    }
+    for (const [zone, { total, strikes }] of zoneMap.entries()) {
+      const pct = Math.round((strikes / total) * 100);
+      if (!best || pct > best.pct) best = { type: t, zone, pct };
+    }
+  }
+  return best;
+}
+
 function swingBg(pct: number, total: number): string {
   if (total < 1) return '#1e293b';
   if (pct >= 75) return '#b91c1c';
@@ -442,6 +491,20 @@ export function BatterHistoryModal({
     }
   }
 
+  // ── 1st and 2nd pitch intel (group by at-bat, pick pitchNumber 1 & 2) ────────
+  const _abMap = new Map<string, PitchRow[]>();
+  for (const p of pitches) {
+    const key = String(p.atBatNumber ?? '');
+    if (!_abMap.has(key)) _abMap.set(key, []);
+    _abMap.get(key)!.push(p);
+  }
+  // Within each at-bat sort by pitchNumber ascending
+  const _absSorted = [..._abMap.values()].map(ab =>
+    [...ab].sort((a, b) => Number(a.pitchNumber ?? 0) - Number(b.pitchNumber ?? 0))
+  );
+  const firstPitchRows  = _absSorted.map(ab => ab[0]).filter(Boolean).reverse();
+  const secondPitchRows = _absSorted.filter(ab => ab.length >= 2).map(ab => ab[1]).reverse();
+
   const uniqueGames     = new Set(pitches.map(p => p.gameId).filter(Boolean)).size;
   const overallSwingPct = totalPitches > 0 ? Math.round(totalSwings  / totalPitches * 100) : 0;
   const chaseRate       = ballPitches  > 0 ? Math.round(ballSwings   / ballPitches  * 100) : 0;
@@ -713,6 +776,56 @@ export function BatterHistoryModal({
                       })() : <p className="text-red-900 text-[13px] mt-1">Not enough data</p>}
                     </div>
                   </div>
+
+                  {/* ── 1st Pitch / 2nd Pitch intel ── */}
+                  {(firstPitchRows.length > 0 || secondPitchRows.length > 0) && (
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      {[
+                        { label: '1st Pitch', rows: firstPitchRows },
+                        { label: '2nd Pitch', rows: secondPitchRows },
+                      ].map(({ label, rows }) => {
+                        const shown = rows.slice(0, 5);
+                        const rec   = bestStrikeRec(rows);
+                        return (
+                          <div key={label} className="rounded-xl p-3 border" style={{ background: '#07101c', borderColor: '#1e3a5f' }}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-blue-400 text-[11px] font-bold uppercase tracking-wide">{label}</span>
+                              <span className="text-slate-600 text-[11px]">{rows.length}×</span>
+                            </div>
+                            {shown.length === 0 ? (
+                              <p className="text-slate-700 text-[12px] text-center py-1">—</p>
+                            ) : (
+                              <>
+                                {rec && (
+                                  <div className="flex items-center gap-1 mb-2 px-1.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
+                                    <span className="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Best K</span>
+                                    <span className="text-[13px] font-black ml-1 shrink-0" style={{ color: PT_COLOR[rec.type] ?? '#94a3b8' }}>
+                                      {PT_LABEL[rec.type] ?? rec.type}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 truncate flex-1 ml-1">{rec.zone}</span>
+                                    <span className="text-[12px] font-bold text-emerald-400 shrink-0 ml-1">{rec.pct}%</span>
+                                  </div>
+                                )}
+                                <div className="space-y-[3px]">
+                                  {shown.map((p, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <span className="text-[12px] font-black w-7 shrink-0" style={{ color: PT_COLOR[p.pitchType ?? ''] ?? '#94a3b8' }}>
+                                        {PT_LABEL[p.pitchType ?? ''] ?? p.pitchType}
+                                      </span>
+                                      <span className="text-slate-500 text-[11px] flex-1 truncate">{pitchLocShort(p.pitchLocation)}</span>
+                                      <span className="text-[11px] font-semibold" style={{ color: OUTCOME_CLR_MAP[p.outcome ?? ''] ?? '#94a3b8' }}>
+                                        {OUTCOME_SHORT_MAP[p.outcome ?? ''] ?? p.outcome}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Where He Does Damage — 3×3 strike zone (in-play counts) */}
                   <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">

@@ -1,5 +1,5 @@
 'use client';
-import { PitchType, SwingResult, ContactType, PitchRecord } from '@/types';
+import { PitchType, SwingResult, ContactType } from '@/types';
 import { PITCH_TYPE_LABELS, PITCH_TYPE_COLORS } from '@/types';
 
 // ── Intel card helpers ─────────────────────────────────────────────────────────
@@ -12,99 +12,7 @@ const OUTCOME_CLR: Record<string, string> = {
   'called-strike': '#f87171', 'swinging-strike': '#f87171', strikeout: '#ef4444',
   foul: '#fbbf24', 'foul-tip': '#fcd34d', 'in-play': '#34d399',
 };
-function zoneShort(loc: PitchRecord['location']): string {
-  if (!loc) return '?';
-  if (loc.zone === 'strike') {
-    const N = ['Hi-In','High','Hi-Out','Mid-In','Ctr','Mid-Out','Lo-In','Low','Lo-Out'];
-    return N[(loc.zoneNumber ?? 1) - 1] ?? 'Z?';
-  }
-  const v = loc.row === 0 ? 'Hi' : loc.row === 4 ? 'Lo' : '';
-  const h = loc.col === 0 ? 'In' : loc.col === 4 ? 'Out' : '';
-  if (v && h) return `B:${v}-${h}`;
-  return v ? `B:${v}` : h ? `B:${h}` : 'Ball';
-}
 
-const STRIKE_OUTCOMES = new Set([
-  'called-strike', 'swinging-strike', 'foul', 'foul-tip', 'strikeout',
-]);
-
-function bestStrikePitch(
-  pitches: PitchRecord[]
-): { type: PitchType; zone: string; pct: number; sampleSize: number } | null {
-  if (pitches.length === 0) return null;
-  const types = ['FB', 'CB', 'SL', 'CH'] as PitchType[];
-
-  let best: { type: PitchType; zone: string; pct: number; sampleSize: number } | null = null;
-
-  for (const t of types) {
-    const byType = pitches.filter(p => p.pitchType === t);
-    if (byType.length === 0) continue;
-
-    // Group by zone label
-    const zoneMap = new Map<string, { total: number; strikes: number }>();
-    for (const p of byType) {
-      const z = zoneShort(p.location);
-      const entry = zoneMap.get(z) ?? { total: 0, strikes: 0 };
-      entry.total++;
-      if (STRIKE_OUTCOMES.has(p.outcome)) entry.strikes++;
-      zoneMap.set(z, entry);
-    }
-
-    // Find the zone with the highest strike rate for this pitch type
-    for (const [zone, { total, strikes }] of zoneMap.entries()) {
-      const pct = Math.round((strikes / total) * 100);
-      // Prefer higher %, break ties by sample size
-      if (!best || pct > best.pct || (pct === best.pct && total > best.sampleSize)) {
-        best = { type: t, zone, pct, sampleSize: total };
-      }
-    }
-  }
-
-  return best;
-}
-
-function IntelCard({ label, pitches }: { label: string; pitches: PitchRecord[] }) {
-  const shown = pitches.slice(0, 5);
-  const rec = bestStrikePitch(pitches);
-  return (
-    <div className="bg-slate-900 rounded-xl border border-slate-800 p-2">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wide">{label}</span>
-        <span className="text-slate-600 text-[11px]">{pitches.length}×</span>
-      </div>
-      {shown.length === 0 ? (
-        <p className="text-slate-700 text-[12px] text-center py-1">—</p>
-      ) : (
-        <>
-          {/* Best pitch for a strike */}
-          {rec && (
-            <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Best K</span>
-              <span className="text-[13px] font-black ml-1 shrink-0" style={{ color: PITCH_TYPE_COLORS[rec.type] }}>
-                {rec.type}
-              </span>
-              <span className="text-[11px] text-slate-400 truncate flex-1 ml-1">{rec.zone}</span>
-              <span className="text-[12px] font-bold text-emerald-400 shrink-0 ml-1">{rec.pct}%</span>
-            </div>
-          )}
-          <div className="space-y-[3px]">
-            {shown.map((p, i) => (
-              <div key={i} className="flex items-center gap-1">
-                <span className="text-[12px] font-black w-7 shrink-0" style={{ color: PITCH_TYPE_COLORS[p.pitchType] }}>
-                  {p.pitchType}
-                </span>
-                <span className="text-slate-500 text-[11px] flex-1 truncate">{zoneShort(p.location)}</span>
-                <span className="text-[11px] font-semibold" style={{ color: OUTCOME_CLR[p.outcome] ?? '#94a3b8' }}>
-                  {OUTCOME_SHORT[p.outcome] ?? p.outcome}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 interface PitchControlsProps {
   pitchType: PitchType | null;
@@ -115,8 +23,6 @@ interface PitchControlsProps {
   onSwingStrike: () => void;
   balls: number;
   strikes: number;
-  firstPitches: PitchRecord[];
-  secondPitches: PitchRecord[];
 }
 
 // Order: FB=1, CB=2, SL=3, CH=4
@@ -131,7 +37,7 @@ const PITCH_TYPES: { type: PitchType; num: number }[] = [
 // py-1 + text sizes below ≈ 25% shorter than the original py-2 layout
 const BTN_H = 'py-[3px]';
 
-export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSetContact, onSwingStrike, balls, strikes, firstPitches, secondPitches }: PitchControlsProps) {
+export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSetContact, onSwingStrike, balls, strikes }: PitchControlsProps) {
   return (
     <div className="space-y-3 pt-2">
       {/* Pitch Type */}
@@ -159,13 +65,6 @@ export function PitchControls({ pitchType, swing, contact, onSetPitchType, onSet
         )}
       </div>
 
-      {/* 1st / 2nd pitch intel cards */}
-      {(firstPitches.length > 0 || secondPitches.length > 0) && (
-        <div className="grid grid-cols-2 gap-2">
-          <IntelCard label="1st Pitch" pitches={firstPitches} />
-          <IntelCard label="2nd Pitch" pitches={secondPitches} />
-        </div>
-      )}
 
       {/* Contact — shown after Swing is selected, same height as pitch type buttons */}
       {swing === 'swing' && (

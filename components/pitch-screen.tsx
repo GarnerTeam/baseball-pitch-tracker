@@ -226,16 +226,6 @@ export function PitchScreen({
     return ab.batterIndex === currentBatterIndex;
   }
   const batterAtBats = allAtBats.filter(ab => _matchesBatter(ab) && ab.isComplete);
-
-  // First-pitch and second-pitch intel for the current batter
-  const firstPitches = batterAtBats
-    .filter(ab => ab.pitches.length >= 1)
-    .map(ab => ab.pitches[0])
-    .reverse();
-  const secondPitches = batterAtBats
-    .filter(ab => ab.pitches.length >= 2)
-    .map(ab => ab.pitches[1])
-    .reverse();
   const currentPlayerId = lineup[currentBatterIndex]?.id;
   const hasPrevABPitch = state.allAtBats.some(ab =>
     ab.pitches.length > 0 &&
@@ -395,8 +385,6 @@ export function PitchScreen({
           onSwingStrike={handleSwingStrike}
           balls={balls}
           strikes={strikes}
-          firstPitches={firstPitches}
-          secondPitches={secondPitches}
         />
       </div>
 
