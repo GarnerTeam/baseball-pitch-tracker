@@ -4,10 +4,11 @@ import { GameState, AtBat, Player } from '@/types';
 import { PitchRow, getAtBatResultBadge, getAtBatResultColor } from '@/components/pitch-row';
 
 // ── At-bat card (mirrors the lineup-panel batter card exactly) ─────────────────
-function AtBatCard({ atBat, isLive, defaultOpen }: {
+function AtBatCard({ atBat, isLive, defaultOpen, displayAbNum }: {
   atBat: AtBat;
   isLive: boolean;
   defaultOpen: boolean;
+  displayAbNum: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const first      = atBat.pitches[0];
@@ -25,7 +26,7 @@ function AtBatCard({ atBat, isLive, defaultOpen }: {
         <span className="text-slate-300 font-semibold text-[21px] truncate">
           #{first?.batterNumber ?? '?'} {first?.batterName ?? '—'}
         </span>
-        <span className="text-slate-500 text-[18px] flex-shrink-0">AB #{atBat.atBatNumber}</span>
+        <span className="text-slate-500 text-[18px] flex-shrink-0">AB #{displayAbNum}</span>
         <span className="text-slate-500 text-[17px] flex-shrink-0">· {atBat.pitches.length}p</span>
 
         {isLive && (
@@ -56,8 +57,9 @@ function AtBatCard({ atBat, isLive, defaultOpen }: {
 }
 
 // ── Per-pitcher log page ───────────────────────────────────────────────────────
-function PitcherLogPage({ items }: {
+function PitcherLogPage({ items, allCompletedABs }: {
   items: { ab: AtBat; isLive: boolean }[];
+  allCompletedABs: AtBat[]; // all real (non-empty) ABs to compute correct sequence numbers
 }) {
   const totalPitches = items.reduce((n, x) => n + x.ab.pitches.length, 0);
 
@@ -75,9 +77,20 @@ function PitcherLogPage({ items }: {
       <p className="text-slate-500 text-[17px] mb-3">
         {items.length} AB{items.length !== 1 ? 's' : ''} · {totalPitches} pitch{totalPitches !== 1 ? 'es' : ''}
       </p>
-      {items.map(({ ab, isLive }, i) => (
-        <AtBatCard key={ab.id} atBat={ab} isLive={isLive} defaultOpen={i === 0} />
-      ))}
+      {items.map(({ ab, isLive }, i) => {
+        // Count only real (has pitches) completed ABs for this batter that came before this one.
+        // This gives the correct ordinal even if phantom empty ABs exist in persisted state.
+        const priorReal = allCompletedABs.filter(prev =>
+          prev.batterIndex === ab.batterIndex &&
+          prev.isComplete &&
+          prev.pitches.length > 0 &&
+          prev.id !== ab.id
+        ).length;
+        const displayAbNum = priorReal + 1;
+        return (
+          <AtBatCard key={ab.id} atBat={ab} isLive={isLive} defaultOpen={i === 0} displayAbNum={displayAbNum} />
+        );
+      })}
     </div>
   );
 }
@@ -122,6 +135,10 @@ export function GameLog({ state }: { state: GameState }) {
     }
     return firstPitch.pitcherName === p.name && firstPitch.pitcherNumber === p.number;
   }
+
+  // All real (non-empty) completed ABs — used to compute correct AB sequence numbers,
+  // immune to any phantom empty ABs that may exist in persisted state.
+  const allCompletedABs: AtBat[] = allAtBats.filter(ab => ab.isComplete && ab.pitches.length > 0);
 
   // Build the item list for the selected pitcher page
   const allItems = [
@@ -204,7 +221,7 @@ export function GameLog({ state }: { state: GameState }) {
           <p className="text-[18px] text-center">Pitches will appear here as you record them.</p>
         </div>
       ) : (
-        <PitcherLogPage key={safeIdx} items={pageItems} />
+        <PitcherLogPage key={safeIdx} items={pageItems} allCompletedABs={allCompletedABs} />
       )}
     </div>
   );

@@ -122,7 +122,9 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
     <>
       {/* ── Performance Bar Chart ── */}
       {(()=>{
-        const battersFaced = Object.keys(bStats).length;
+        // Batters faced = total plate appearances, not unique batters.
+        // Count distinct (batterNumber + atBatNumber) pairs in the pitcher's pitches.
+        const battersFaced = new Set(pitches.map(p => p.batterNumber + '-' + p.atBatNumber)).size;
         const totalK  = Object.values(bStats).reduce((s,b)=>s+b.k,  0);
         const totalBB = Object.values(bStats).reduce((s,b)=>s+b.bb, 0);
         const maxVal  = Math.max(battersFaced, totalK, totalBB, 1);
