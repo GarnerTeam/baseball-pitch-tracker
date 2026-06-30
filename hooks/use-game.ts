@@ -123,7 +123,9 @@ function isOut(ab: AtBat): boolean {
 }
 
 function advanceToNextBatter(state: GameState, completedAtBat: AtBat): GameState {
-  const updatedAll = [...state.allAtBats, completedAtBat];
+  // Skip saving empty manual-end ABs (nav-only advances with no pitches recorded)
+  const shouldSave = completedAtBat.pitches.length > 0 || completedAtBat.result !== 'manual-end';
+  const updatedAll = shouldSave ? [...state.allAtBats, completedAtBat] : [...state.allAtBats];
   // Guard: empty lineup → stay at 0; NaN currentBatterIndex → reset to 0
   const safeCurrentIdx = (!state.lineup.length || isNaN(state.currentBatterIndex))
     ? 0
@@ -510,7 +512,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         result: 'manual-end',
         completedAt: new Date().toISOString(),
       };
-      const updatedAll = [...state.allAtBats, ended];
+      // Skip saving empty manual-end ABs (nav-only advances with no pitches recorded)
+      const shouldSavePrev = ended.pitches.length > 0 || ended.result !== 'manual-end';
+      const updatedAll = shouldSavePrev ? [...state.allAtBats, ended] : [...state.allAtBats];
       const prevIndex = (state.currentBatterIndex - 1 + state.lineup.length) % state.lineup.length;
       const prevAtBatNum = getBatterAtBatNumber(updatedAll, prevIndex);
       const prevPlayerId = state.lineup[prevIndex]?.id;

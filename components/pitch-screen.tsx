@@ -225,7 +225,7 @@ export function PitchScreen({
     }
     return ab.batterIndex === currentBatterIndex;
   }
-  const batterAtBats = allAtBats.filter(ab => _matchesBatter(ab) && ab.isComplete);
+  const batterAtBats = allAtBats.filter(ab => _matchesBatter(ab) && ab.isComplete && ab.pitches.length > 0);
   const currentPlayerId = lineup[currentBatterIndex]?.id;
   const hasPrevABPitch = state.allAtBats.some(ab =>
     ab.pitches.length > 0 &&
@@ -311,9 +311,6 @@ export function PitchScreen({
       />
       <PlayerHeader
         pitcher={pitcher}
-        batter={batter}
-        atBatNumber={batterAtBats.length + 1}
-        onBatterClick={() => setShowBatterHistory(true)}
         onPitcherClick={pitcher.name?.trim() ? () => setShowPitcherStats(true) : undefined}
       />
 
@@ -372,6 +369,31 @@ export function PitchScreen({
           swing={pendingPitch.swing}
           onSetSwing={handleSetSwing}
         />
+      </div>
+
+      {/* Batter name bar — between pitch grid and pitch type buttons */}
+      <div className="flex-shrink-0 px-3 py-1.5 flex items-center justify-between border-t border-slate-800 bg-slate-950">
+        <button
+          onClick={() => setShowBatterHistory(true)}
+          className="flex items-center gap-2 min-w-0 active:opacity-70 transition-opacity"
+        >
+          <span className="text-slate-200 text-[21px] font-semibold truncate">
+            {batter.name && batter.name !== 'Add Batter'
+              ? batter.name
+              : <span className="text-slate-500 italic">Add Batter</span>}
+          </span>
+          {batter.name && batter.name !== 'Add Batter' && (
+            <span className="bg-amber-600 text-white text-[18px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0">
+              #{batter.number?.trim() || '—'}
+            </span>
+          )}
+          {batter.name && batter.name !== 'Add Batter' && (
+            <span className="text-slate-500 text-[15px] flex-shrink-0">▼</span>
+          )}
+        </button>
+        <span className="text-amber-400 text-[18px] font-bold flex-shrink-0 ml-2">
+          AB {batterAtBats.length + 1}
+        </span>
       </div>
 
       {/* Pitch type + contact buttons */}
