@@ -206,6 +206,22 @@ function getBatterHistory(batterName, batterNum) {
     pitches.push(obj);
   }
 
+  // Sort by at-bat number then pitch number so sheet row order never matters.
+  // Each pitch carries atBatNumber and pitchNumber — this guarantees correct
+  // chronological order even when offline buffering caused rows to land out
+  // of sequence in the sheet.
+  var abIdx  = hmap['atBatNumber']  !== undefined ? hmap['atBatNumber']  : hmap['At-Bat #'];
+  var pnIdx  = hmap['pitchNumber']  !== undefined ? hmap['pitchNumber']  : hmap['Pitch # in AB'];
+
+  pitches.sort(function(a, b) {
+    var abA = Number(a.atBatNumber)  || 0;
+    var abB = Number(b.atBatNumber)  || 0;
+    if (abA !== abB) return abA - abB;
+    var pA  = Number(a.pitchNumber)  || 0;
+    var pB  = Number(b.pitchNumber)  || 0;
+    return pA - pB;
+  });
+
   return jsonOut({ pitches: pitches, count: pitches.length, sheetRows: sheetRows });
 }
 
