@@ -41,6 +41,7 @@ export const OUTCOME_COLOR: Record<string, string> = {
   'in-play':         'text-green-400',
   'walk':            'text-blue-300',
   'strikeout':       'text-red-500',
+  'hit-by-pitch':    'text-amber-300',
 };
 
 /** K = swinging strikeout | mirrored K = strikeout looking */

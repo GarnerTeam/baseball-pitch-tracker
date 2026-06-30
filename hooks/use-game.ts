@@ -368,8 +368,35 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'HIT_BY_PITCH': {
       if (!state.currentAtBat) return state;
       const batter = state.lineup[state.currentBatterIndex];
+      // Create a pitch record so HBP appears in pitch log, stats, and sheets sync
+      const hbpPitch: PitchRecord = {
+        id: `pitch-${genId()}`,
+        gameId: state.id,
+        timestamp: new Date().toISOString(),
+        pitcherName: state.pitcher.name,
+        pitcherNumber: state.pitcher.number,
+        batterName: batter?.name ?? '',
+        batterNumber: batter?.number ?? '',
+        lineupPosition: state.currentBatterIndex,
+        atBatNumber: state.currentAtBat.atBatNumber,
+        pitchNumber: state.currentAtBat.pitches.length + 1,
+        ballsBefore: state.currentAtBat.balls,
+        strikesBefore: state.currentAtBat.strikes,
+        ballsAfter: state.currentAtBat.balls,
+        strikesAfter: state.currentAtBat.strikes,
+        pitchType: state.pendingPitch.pitchType ?? 'FB',
+        location: state.pendingPitch.location ?? { row: 2, col: 0, zone: 'ball' as const },
+        swing: false,
+        outcome: 'hit-by-pitch',
+        batterHand: state.batterHand,
+        baseState: state.baseState,
+        outsCount: state.outsCount,
+        homeTeam: state.homeTeam,
+        visitingTeam: state.visitingTeam,
+      };
       const ended: AtBat = {
         ...state.currentAtBat,
+        pitches: [...state.currentAtBat.pitches, hbpPitch],
         isComplete: true,
         result: 'hit-by-pitch',
         completedAt: new Date().toISOString(),
@@ -379,6 +406,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         currentAtBat: ended,
         baseState: { ...state.baseState, first: true },
+        syncQueue: [...state.syncQueue, hbpPitch],
       };
       const hbpNote = { message: `HBP! ${batter?.name ?? 'Batter'} takes first.`, type: 'info' as const };
       const next = advanceToNextBatter(stateWithBase, ended);

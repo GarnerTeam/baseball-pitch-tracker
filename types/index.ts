@@ -19,7 +19,8 @@ export type PitchOutcome =
   | 'foul-tip'
   | 'in-play'
   | 'walk'
-  | 'strikeout';
+  | 'strikeout'
+  | 'hit-by-pitch';
 
 export type HitType = 'ground-ball' | 'line-drive' | 'fly-ball' | 'pop-up';
 export type HitResult = 'out' | 'single' | 'double' | 'triple' | 'home-run' | 'error';

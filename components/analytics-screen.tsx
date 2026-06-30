@@ -1,12 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { GameState, PitchRecord, Player, AtBat } from '@/types';
+import { GameState, PitchRecord, Player } from '@/types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { PitchTypeBarChart, buildPitchTypeStats } from '@/components/pitch-type-chart';
 
 const OUTCOME_COLORS: Record<string, string> = {
   ball:'#22c55e','called-strike':'#ef4444','swinging-strike':'#dc2626',
-  foul:'#f97316','foul-tip':'#fb923c','in-play':'#3b82f6',walk:'#10b981',strikeout:'#7f1d1d',
+  foul:'#f97316','foul-tip':'#fb923c','in-play':'#3b82f6',walk:'#10b981',strikeout:'#7f1d1d','hit-by-pitch':'#f59e0b',
 };
 
 // ── Field geometry ─────────────────────────────────────────────────────────────
@@ -79,11 +79,10 @@ function BaseballField({ hits }: { hits: PitchRecord[] }) {
 }
 
 // ── Per-pitcher stats page ─────────────────────────────────────────────────────
-function PitcherStatsPage({ pitches, pitcher, isCurrent, atBats }: {
+function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
   pitches: PitchRecord[];
   pitcher: Player | null;
   isCurrent: boolean;
-  atBats: AtBat[];
 }) {
   const total   = pitches.length;
   const strikes = pitches.filter(p => ['called-strike','swinging-strike','foul','foul-tip','strikeout','in-play'].includes(p.outcome)).length;
@@ -105,18 +104,7 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent, atBats }: {
     if (!bStats[p.batterNumber]) bStats[p.batterNumber] = { name: p.batterName, pitches: 0, k: 0, bb: 0 };
     bStats[p.batterNumber].pitches++;
     if (p.outcome === 'strikeout') bStats[p.batterNumber].k++;
-    if (p.outcome === 'walk') bStats[p.batterNumber].bb++;
-  });
-
-  // Add HBP from at-bat results — HBP never creates a pitch record so
-  // it won't appear in the pitches loop above. We read it from AtBat.result.
-  atBats.forEach(ab => {
-    if (!ab.isComplete || ab.result !== 'hit-by-pitch') return;
-    if (ab.pitches.length === 0) return; // 0-pitch HBP: can't identify batter
-    const last = ab.pitches[ab.pitches.length - 1];
-    const num = last.batterNumber;
-    if (!bStats[num]) bStats[num] = { name: last.batterName, pitches: 0, k: 0, bb: 0 };
-    bStats[num].bb++;  // HBP counts the same as BB (on-base)
+    if (p.outcome === 'walk' || p.outcome === 'hit-by-pitch') bStats[p.batterNumber].bb++;
   });
 
   const hits = pitches.filter(p => p.hitData);
@@ -321,19 +309,6 @@ export function AnalyticsScreen({ state }: { state: GameState }) {
       )
     : allPitches;
 
-  // Build filtered at-bat list so HBP (which has no pitch record) can be counted
-  const allGameAtBats = [...state.allAtBats, ...(state.currentAtBat ? [state.currentAtBat] : [])];
-  const pitcherAtBats = selectedPitcher?.name?.trim()
-    ? allGameAtBats.filter(ab =>
-        // At-bats that have at least one pitch from this pitcher
-        ab.pitches.some(p =>
-          p.pitcherName === selectedPitcher.name &&
-          p.pitcherNumber === selectedPitcher.number
-        ) ||
-        // 0-pitch HBP (rare): attribute only to the current pitcher
-        (ab.pitches.length === 0 && ab.result === 'hit-by-pitch' && safeIdx === 0)
-      )
-    : allGameAtBats;
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -409,7 +384,6 @@ export function AnalyticsScreen({ state }: { state: GameState }) {
       <PitcherStatsPage
         key={safeIdx}
         pitches={pitcherPitches}
-        atBats={pitcherAtBats}
         pitcher={selectedPitcher}
         isCurrent={isCurrent}
       />

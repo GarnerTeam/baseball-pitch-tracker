@@ -64,6 +64,7 @@ export function updateCount(
         ? { balls: currentBalls, strikes: currentStrikes + 1 }
         : { balls: currentBalls, strikes: currentStrikes };
     case 'in-play':
+    case 'hit-by-pitch':
       return { balls: currentBalls, strikes: currentStrikes };
     default:
       return { balls: currentBalls, strikes: currentStrikes };
@@ -71,7 +72,7 @@ export function updateCount(
 }
 
 export function isAtBatComplete(outcome: PitchOutcome): boolean {
-  return outcome === 'walk' || outcome === 'strikeout' || outcome === 'in-play';
+  return outcome === 'walk' || outcome === 'strikeout' || outcome === 'in-play' || outcome === 'hit-by-pitch';
 }
 
 export function getAtBatResult(
@@ -80,6 +81,7 @@ export function getAtBatResult(
   if (outcome === 'walk') return 'walk';
   if (outcome === 'strikeout') return 'strikeout';
   if (outcome === 'in-play') return 'in-play';
+  if (outcome === 'hit-by-pitch') return 'hit-by-pitch';
   return undefined;
 }
 
@@ -93,6 +95,7 @@ export function getOutcomeLabel(outcome: PitchOutcome): string {
     'in-play': 'Ball in Play',
     walk: 'WALK!',
     strikeout: 'STRIKEOUT!',
+    'hit-by-pitch': 'HBP!',
   };
   return labels[outcome] ?? outcome;
 }
