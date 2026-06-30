@@ -588,6 +588,75 @@ export function ScoutClient() {
           </div>
 
           <div className="p-4 space-y-4">
+
+            {/* ── Batters Faced / Strikeouts / Walks bar chart ── */}
+            {(() => {
+              const chartBars = [
+                { label: 'Batters Faced', value: pitcherBatters.length, color: '#3b82f6' },
+                { label: 'Strikeouts',    value: strikeouts,             color: '#ef4444' },
+                { label: 'Walks',         value: walks,                  color: '#22c55e' },
+              ];
+              const maxVal = Math.max(...chartBars.map(b => b.value), 1);
+
+              // SVG layout constants
+              const W = 300, H = 190;
+              const ML = 32, MR = 8, MT = 18, MB = 38; // margins
+              const chartW = W - ML - MR;
+              const chartH = H - MT - MB;
+              const gap = 18;
+              const barW = (chartW - gap * (chartBars.length - 1)) / chartBars.length;
+
+              // Y-axis ticks: 0, half, max (rounded up to nice number)
+              const tickMax = maxVal;
+              const tickMid = Math.round(tickMax / 2);
+              const ticks = [0, tickMid, tickMax];
+
+              return (
+                <div className="bg-slate-900 rounded-xl border border-slate-700 p-3">
+                  <p className="text-slate-400 text-[15px] uppercase tracking-wider font-medium mb-2">Performance</p>
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ overflow: 'visible' }}>
+                    {/* Y-axis ticks + grid lines */}
+                    {ticks.map(t => {
+                      const y = MT + chartH - (t / tickMax) * chartH;
+                      return (
+                        <g key={t}>
+                          <line x1={ML} y1={y} x2={ML + chartW} y2={y}
+                            stroke={t === 0 ? '#475569' : '#1e293b'} strokeWidth={t === 0 ? 1.5 : 1} />
+                          <text x={ML - 4} y={y + 4} textAnchor="end"
+                            fill="#64748b" fontSize={10}>{t}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Bars */}
+                    {chartBars.map((bar, i) => {
+                      const barH = maxVal > 0 ? (bar.value / maxVal) * chartH : 0;
+                      const x = ML + i * (barW + gap);
+                      const y = MT + chartH - barH;
+                      const midX = x + barW / 2;
+                      return (
+                        <g key={bar.label}>
+                          {/* Bar body */}
+                          <rect x={x} y={y} width={barW} height={Math.max(barH, 2)}
+                            fill={bar.color} rx={4} opacity={0.85} />
+                          {/* Value on top */}
+                          <text x={midX} y={y - 4} textAnchor="middle"
+                            fill="#e2e8f0" fontSize={13} fontWeight="bold">{bar.value}</text>
+                          {/* Label below x-axis */}
+                          <text x={midX} y={MT + chartH + 14} textAnchor="middle"
+                            fill="#94a3b8" fontSize={10}>{bar.label.split(' ')[0]}</text>
+                          {bar.label.split(' ')[1] && (
+                            <text x={midX} y={MT + chartH + 26} textAnchor="middle"
+                              fill="#94a3b8" fontSize={10}>{bar.label.split(' ')[1]}</text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'Strike %', value: `${strikePct}%` },
