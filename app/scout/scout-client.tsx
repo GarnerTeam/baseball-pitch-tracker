@@ -589,46 +589,27 @@ export function ScoutClient() {
 
           <div className="p-4 space-y-4">
 
-            {/* ── Batters Faced / Strikeouts / Walks bar chart ── */}
-            {(() => {
-              const BAR_MAX_H = 100; // px — explicit height so bars render correctly
-              const bars = [
+            {/* ── Performance: horizontal bar chart ── */}
+            <div className="bg-slate-900 rounded-xl border border-slate-700 p-4 space-y-3">
+              <p className="text-slate-400 text-[15px] uppercase tracking-wider font-medium">Performance</p>
+              {[
                 { label: 'Batters Faced', value: pitcherBatters.length, color: '#3b82f6' },
                 { label: 'Strikeouts',    value: strikeouts,             color: '#ef4444' },
                 { label: 'Walks',         value: walks,                  color: '#22c55e' },
-              ];
-              const maxVal = Math.max(...bars.map(b => b.value), 1);
-              const tickMid = Math.round(maxVal / 2);
-              return (
-                <div className="bg-slate-900 rounded-xl border border-slate-700 p-4">
-                  <p className="text-slate-400 text-[15px] uppercase tracking-wider font-medium mb-4">Performance</p>
-                  <div className="flex items-end gap-3">
-                    {/* Y-axis: labels aligned to top/mid/bottom of the bar area */}
-                    <div className="flex-shrink-0 flex flex-col justify-between items-end" style={{ height: BAR_MAX_H, width: 24 }}>
-                      <span className="text-slate-500 text-[11px] leading-none">{maxVal}</span>
-                      <span className="text-slate-500 text-[11px] leading-none">{tickMid}</span>
-                      <span className="text-slate-500 text-[11px] leading-none">0</span>
+              ].map(bar => {
+                const maxVal = Math.max(pitcherBatters.length, strikeouts, walks, 1);
+                const pct = Math.max((bar.value / maxVal) * 100, bar.value > 0 ? 2 : 0);
+                return (
+                  <div key={bar.label} className="flex items-center gap-3">
+                    <span className="text-slate-300 text-[16px] w-32 flex-shrink-0">{bar.label}</span>
+                    <span className="text-white font-black text-[20px] w-8 text-right flex-shrink-0">{bar.value}</span>
+                    <div className="flex-1 rounded-full overflow-hidden" style={{ height: 18, backgroundColor: '#1e293b' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: bar.color }} />
                     </div>
-                    {/* Three bars */}
-                    {bars.map(bar => {
-                      const barH = Math.max(Math.round((bar.value / maxVal) * BAR_MAX_H), 3);
-                      return (
-                        <div key={bar.label} className="flex-1 flex flex-col items-center gap-1.5">
-                          {/* Value label above bar */}
-                          <span className="text-white text-[15px] font-bold leading-none">{bar.value}</span>
-                          {/* Bar track — explicit pixel height so barH % works */}
-                          <div className="w-full flex items-end" style={{ height: BAR_MAX_H, backgroundColor: '#1e293b', borderRadius: 6 }}>
-                            <div style={{ width: '100%', height: barH, backgroundColor: bar.color, borderRadius: 6 }} />
-                          </div>
-                          {/* Metric label below bar */}
-                          <span className="text-slate-400 text-[11px] text-center leading-tight">{bar.label}</span>
-                        </div>
-                      );
-                    })}
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })}
+            </div>
 
             <div className="grid grid-cols-3 gap-3">
               {[
