@@ -22,7 +22,7 @@ export function PlayerHeader({ pitcher, onPitcherClick }: PlayerHeaderProps) {
         <span className="bg-blue-700 text-white text-[18px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0">
           #{pitcherNum}
         </span>
-        <span className="text-slate-200 text-[21px] font-medium truncate">
+        <span className="text-slate-200 text-[21px] font-medium truncate flex-1 min-w-0">
           {pitcher.name || <span className="text-slate-500 italic">No pitcher</span>}
         </span>
         {pitcher.hand && (

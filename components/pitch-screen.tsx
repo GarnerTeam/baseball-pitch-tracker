@@ -377,7 +377,7 @@ export function PitchScreen({
           onClick={() => setShowBatterHistory(true)}
           className="flex items-center gap-2 min-w-0 active:opacity-70 transition-opacity"
         >
-          <span className="text-slate-200 text-[21px] font-semibold truncate">
+          <span className="text-slate-200 text-[21px] font-semibold truncate flex-1 min-w-0">
             {batter.name && batter.name !== 'Add Batter'
               ? batter.name
               : <span className="text-slate-500 italic">Add Batter</span>}
