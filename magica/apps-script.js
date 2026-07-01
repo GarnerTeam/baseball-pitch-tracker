@@ -113,6 +113,11 @@ function isEditRow(row, editIdx) {
  *   action=scout  [gameId=<id>]
  *     Returns all non-edit pitches for the latest game (or a specific gameId).
  *     Used by the read-only Scout view on a second device.
+ *
+ *   action=games
+ *     Returns a lightweight list of distinct completed games (gameId, teams,
+ *     first/last timestamp, pitch count) — powers the "Past Games" browser
+ *     in the main app. Does NOT return per-pitch data (use action=scout for that).
  */
 function doGet(e) {
   try {
@@ -130,6 +135,10 @@ function doGet(e) {
 
     if (action === 'scout') {
       return getGameScout((params.gameId || '').trim());
+    }
+
+    if (action === 'games') {
+      return getGamesList();
     }
 
     return jsonOut({ error: 'Unknown action: ' + action });
@@ -280,6 +289,79 @@ function getGameScout(gameId) {
   }
 
   return jsonOut({ pitches: pitches, count: pitches.length, gameId: targetGameId });
+}
+
+// ─── getGamesList ─────────────────────────────────────────────────────────────
+
+function getGamesList() {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet) return jsonOut({ error: 'No sheet named "Pitches"', games: [] });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ games: [], count: 0 });
+
+  var lastCol    = sheet.getLastColumn();
+  var data       = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+  var hmap       = buildHeaderMap(rawHeaders);
+
+  var gameIdIdx  = hmap['gameId']       !== undefined ? hmap['gameId']       : hmap['Game ID'];
+  var tsIdx      = hmap['timestamp']    !== undefined ? hmap['timestamp']    : hmap['Timestamp'];
+  var homeIdx    = hmap['homeTeam']     !== undefined ? hmap['homeTeam']     : hmap['My Team'];
+  var awayIdx    = hmap['visitingTeam'] !== undefined ? hmap['visitingTeam'] : hmap['Opposing Team'];
+  var editIdx    = hmap['isEdit']       !== undefined ? hmap['isEdit']       : hmap['Is Edit'];
+
+  if (gameIdIdx === undefined) {
+    return jsonOut({ error: 'Cannot find gameId column', games: [] });
+  }
+
+  // Aggregate per gameId: team names, first/last timestamp, pitch count.
+  // Rows are appended chronologically, so first-seen order == game order.
+  var gamesMap = {};
+  var order    = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (isEditRow(row, editIdx)) continue;
+
+    var gid = String(row[gameIdIdx] || '').trim();
+    if (!gid) continue;
+
+    if (!gamesMap[gid]) {
+      gamesMap[gid] = {
+        gameId: gid,
+        homeTeam: '',
+        visitingTeam: '',
+        firstTimestamp: '',
+        lastTimestamp: '',
+        pitchCount: 0,
+      };
+      order.push(gid);
+    }
+
+    var g = gamesMap[gid];
+    g.pitchCount++;
+
+    var rawTs = tsIdx !== undefined ? row[tsIdx] : '';
+    var tsStr = rawTs instanceof Date
+      ? Utilities.formatDate(rawTs, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'")
+      : String(rawTs || '');
+    if (tsStr) {
+      if (!g.firstTimestamp || tsStr < g.firstTimestamp) g.firstTimestamp = tsStr;
+      if (!g.lastTimestamp  || tsStr > g.lastTimestamp)  g.lastTimestamp  = tsStr;
+    }
+    // Team names can be filled in partway through a game; keep the most
+    // recently seen non-blank value so late entries aren't lost.
+    if (homeIdx !== undefined && row[homeIdx]) g.homeTeam = String(row[homeIdx]);
+    if (awayIdx !== undefined && row[awayIdx]) g.visitingTeam = String(row[awayIdx]);
+  }
+
+  // Most recently active game first
+  var games = order.map(function(gid) { return gamesMap[gid]; })
+    .sort(function(a, b) { return (b.lastTimestamp || '').localeCompare(a.lastTimestamp || ''); });
+
+  return jsonOut({ games: games, count: games.length });
 }
 
 // ─── doPost ───────────────────────────────────────────────────────────────────
