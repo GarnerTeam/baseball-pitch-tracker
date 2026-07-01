@@ -195,13 +195,33 @@ function sprayHitColor(result: string) {
 }
 
 function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
-  const hits = allABs
-    .flatMap(ab => ab.pitches)
+  const allPitches = allABs.flatMap(ab => ab.pitches);
+  const hits = allPitches
     .filter((p): p is PitchRecord & { hitData: NonNullable<PitchRecord["hitData"]> } => !!p.hitData);
+
+  // Predominant batter hand — derived from what was actually entered on the
+  // Pitch page for this batter's at-bats (PitchRecord.batterHand), not the
+  // roster-level Player.hand field, so the icon reflects real recorded data.
+  const handCounts = { R: 0, L: 0 };
+  for (const p of allPitches) {
+    if (p.batterHand === 'R') handCounts.R++;
+    else if (p.batterHand === 'L') handCounts.L++;
+  }
+  const sprayHand: 'R' | 'L' | null =
+    handCounts.R === 0 && handCounts.L === 0 ? null : (handCounts.L > handCounts.R ? 'L' : 'R');
 
   return (
     <div className="mt-3 space-y-1.5">
-      <p className="text-slate-500 text-[15px] uppercase tracking-wider px-0.5">Spray Chart</p>
+      <div className="flex items-center gap-2 px-0.5">
+        <p className="text-slate-500 text-[15px] uppercase tracking-wider">Spray Chart</p>
+        {sprayHand && (
+          <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded ${
+            sprayHand === 'R' ? 'bg-blue-900 text-blue-300' : 'bg-amber-900 text-amber-300'
+          }`}>
+            {sprayHand}HB
+          </span>
+        )}
+      </div>
       <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full rounded-xl" style={{ background: '#0a140a' }}>
         {/* Warning track */}
         <path d={`M ${SHX} ${SHY} L ${SLFPX} ${SLFPY} A ${SR_FENCE} ${SR_FENCE} 0 0 1 ${SRFPX} ${SRFPY} Z`} fill="#7a5c3a" />
