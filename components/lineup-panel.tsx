@@ -4,6 +4,7 @@ import { GameState, Player, AtBat, PitchRecord, PitchType, PitchOutcome, PITCH_T
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
+import { BatterFigureIcon } from '@/components/strike-zone';
 import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
 
 interface SyncStatus {
@@ -210,18 +211,17 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
   const sprayHand: 'R' | 'L' | null =
     handCounts.R === 0 && handCounts.L === 0 ? null : (handCounts.L > handCounts.R ? 'L' : 'R');
 
+  // Batter stands to the pitcher's left in the box when right-handed, and to
+  // the pitcher's right when left-handed (same convention used elsewhere in
+  // the app, e.g. the History page bat icon placement).
+  const iconW = 22, iconH = 40;
+  const iconX = sprayHand === 'R' ? SHX - 34 : SHX + 12;
+  const iconY = SHY - 34;
+  const iconColor = sprayHand === 'R' ? '#93c5fd' : '#fcd34d';
+
   return (
     <div className="mt-3 space-y-1.5">
-      <div className="flex items-center gap-2 px-0.5">
-        <p className="text-slate-500 text-[15px] uppercase tracking-wider">Spray Chart</p>
-        {sprayHand && (
-          <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded ${
-            sprayHand === 'R' ? 'bg-blue-900 text-blue-300' : 'bg-amber-900 text-amber-300'
-          }`}>
-            {sprayHand}HB
-          </span>
-        )}
-      </div>
+      <p className="text-slate-500 text-[15px] uppercase tracking-wider px-0.5">Spray Chart</p>
       <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full rounded-xl" style={{ background: '#0a140a' }}>
         {/* Warning track */}
         <path d={`M ${SHX} ${SHY} L ${SLFPX} ${SLFPY} A ${SR_FENCE} ${SR_FENCE} 0 0 1 ${SRFPX} ${SRFPY} Z`} fill="#7a5c3a" />
@@ -252,6 +252,11 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
             <text x={x} y={y+4} textAnchor="middle" fontSize="14" fontWeight="bold" fill="#0a140a">{l}</text>
           </g>
         ))}
+        {/* Batter icon — same figure used on the Pitch page, placed beside home plate
+            on the side the batter actually stood (per recorded batterHand) */}
+        {sprayHand && (
+          <BatterFigureIcon hand={sprayHand} x={iconX} y={iconY} width={iconW} height={iconH} color={iconColor} />
+        )}
         {/* Hit dots */}
         {hits.length === 0 && (
           <text x={SW/2} y={SH/2} textAnchor="middle" fontSize="16" fill="#475569">No hits recorded</text>

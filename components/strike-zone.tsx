@@ -56,6 +56,39 @@ function PitchDot({ pitch, opacity }: { pitch: PitchRecord; opacity: number }) {
   );
 }
 
+/**
+ * Static, embeddable version of the Pitch-page batter icon — same path geometry
+ * as BatterIcon below, but as a nested <svg> fragment (with x/y/width/height)
+ * so it can be placed inside another SVG (e.g. the spray chart field diagram)
+ * rather than as a standalone button.
+ */
+export function BatterFigureIcon({
+  hand, x, y, width = 22, height = 40, color = '#94a3b8',
+}: { hand: 'L' | 'R'; x: number; y: number; width?: number; height?: number; color?: string }) {
+  const flip = hand === 'L';
+  return (
+    <svg
+      x={x} y={y} width={width} height={height}
+      viewBox="0 0 28 50"
+      style={{ transform: flip ? 'scaleX(-1)' : 'none', transformOrigin: 'center' }}
+      fill={color}
+      stroke={color}
+      strokeLinecap="round"
+    >
+      <circle cx="14" cy="6" r="5.5" strokeWidth="0" />
+      <rect x="8" y="4" width="8" height="4" rx="1" fill={color} />
+      <rect x="10" y="11" width="8" height="13" rx="2" strokeWidth="0" />
+      <line x1="10" y1="15" x2="1" y2="3" strokeWidth="2.5" fill="none" />
+      <line x1="18" y1="14" x2="22" y2="18" strokeWidth="2" fill="none" />
+      <line x1="10" y1="14" x2="6" y2="11" strokeWidth="2" fill="none" />
+      <line x1="12" y1="24" x2="8" y2="42" strokeWidth="2.5" fill="none" />
+      <line x1="16" y1="24" x2="20" y2="42" strokeWidth="2.5" fill="none" />
+      <line x1="8" y1="42" x2="4" y2="44" strokeWidth="2" fill="none" />
+      <line x1="20" y1="42" x2="24" y2="44" strokeWidth="2" fill="none" />
+    </svg>
+  );
+}
+
 function BatterIcon({ hand, selected, noneSelected, onClick }: { hand: 'L' | 'R'; selected: boolean; noneSelected: boolean; onClick: () => void }) {
   const flip = hand === 'L';
   // When neither hand is chosen: RHB blinks on-first, LHB blinks off-first
