@@ -123,8 +123,10 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
       {/* ── Performance Bar Chart ── */}
       {(()=>{
         // Batters faced = total plate appearances, not unique batters.
-        // Count distinct (batterNumber + atBatNumber) pairs in the pitcher's pitches.
-        const battersFaced = new Set(pitches.map(p => p.batterNumber + '-' + p.atBatNumber)).size;
+        // Key by (lineupPosition + atBatNumber), NOT batterNumber — jersey numbers
+        // are optional and can be blank/duplicated across batters, which collapses
+        // distinct plate appearances into one. lineupPosition is always unique per slot.
+        const battersFaced = new Set(pitches.map(p => p.lineupPosition + '-' + p.atBatNumber)).size;
         const totalK  = Object.values(bStats).reduce((s,b)=>s+b.k,  0);
         const totalBB = Object.values(bStats).reduce((s,b)=>s+b.bb, 0);
         const maxVal  = Math.max(battersFaced, totalK, totalBB, 1);
