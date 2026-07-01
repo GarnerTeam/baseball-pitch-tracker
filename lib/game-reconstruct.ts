@@ -316,3 +316,45 @@ export function buildFakeGameState(game: ScoutGame, webhookUrl: string): GameSta
     syncQueue:           [],
   };
 }
+
+// ── Per-pitcher filtering (for pitcher-swipe views) ──────────────────────────
+
+/**
+ * Returns the full list of pitchers who appeared in a reconstructed game,
+ * in chronological order (starting pitcher first, most recent last) — the
+ * order a coach reviewing a completed game actually wants, as opposed to
+ * the "current pitcher first" ordering used for live-game screens.
+ */
+export function chronologicalPitchers(state: GameState): Player[] {
+  const list = [...(state.pitcherHistory ?? [])];
+  if (state.pitcher && state.pitcher.name.trim()) list.push(state.pitcher);
+  return list;
+}
+
+/**
+ * Derives a GameState scoped to a single pitcher's outing — every AtBat's
+ * pitches are filtered down to just the pitches that pitcher threw, and
+ * AtBats where that pitcher never threw a pitch are dropped entirely.
+ * Used to power a pitcher-swipe view on the Lineup tab for past games, so
+ * "viewing a previous pitcher" actually shows the lineup/at-bats that
+ * pitcher faced, instead of just a static stats popup.
+ */
+export function filterGameStateByPitcher(state: GameState, pitcher: Player | null): GameState {
+  if (!pitcher || !pitcher.name.trim()) return state;
+
+  const matches = (p: PitchRecord) =>
+    p.pitcherName === pitcher.name && p.pitcherNumber === pitcher.number;
+
+  const allAtBats: AtBat[] = state.allAtBats
+    .map(ab => ({ ...ab, pitches: ab.pitches.filter(matches) }))
+    .filter(ab => ab.pitches.length > 0);
+
+  return {
+    ...state,
+    pitcher,
+    pitcherHistory: [], // suppress LineupPanel's own "Previous" list — the
+                         // pitcher-swipe header above it already covers this
+    allAtBats,
+    currentAtBat: null,
+  };
+}

@@ -7,6 +7,7 @@ import { SetupScreen } from '@/components/setup-screen';
 import { PitchScreen } from '@/components/pitch-screen';
 import { HitScreen } from '@/components/hit-screen';
 import { LineupPanel } from '@/components/lineup-panel';
+import { HistoryLineupView } from '@/components/history-lineup-view';
 import { AnalyticsScreen } from '@/components/analytics-screen';
 import { GameLog } from '@/components/game-log';
 import { NotificationToast } from '@/components/notification-toast';
@@ -21,7 +22,6 @@ const NAV_TABS = [
 
 // Past games are read-only — no Pitch tab, since the game is already completed.
 const HISTORY_NAV_TABS = NAV_TABS.filter(t => t.id !== 'pitch');
-const NOOP = () => {};
 
 export default function App() {
   const { state, actions } = useGame();
@@ -68,14 +68,7 @@ export default function App() {
 
         <div className="flex-1 min-h-0">
           {historyTab === 'lineup' && (
-            <LineupPanel
-              state={historyState}
-              readOnly={true}
-              onNextBatter={NOOP} onPrevBatter={NOOP} onEndAtBat={NOOP}
-              onChangePitcher={NOOP} onAddBatter={NOOP} onRemoveBatter={NOOP}
-              onSetBatterAt={NOOP} onReorderBatter={NOOP} onEditPitch={NOOP}
-              onUndoLastEnd={NOOP} onSetWebhookUrl={NOOP}
-            />
+            <HistoryLineupView state={historyState} />
           )}
           {historyTab === 'analytics' && <AnalyticsScreen state={historyState} />}
           {historyTab === 'log' && <GameLog state={historyState} />}
