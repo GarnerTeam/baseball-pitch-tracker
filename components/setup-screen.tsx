@@ -6,9 +6,10 @@ interface SetupScreenProps {
   onStart: (homeTeam: string, visitingTeam: string) => void;
   webhookUrl: string;
   onSetWebhookUrl: (url: string) => void;
+  onViewPastGames: () => void;
 }
 
-export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl }: SetupScreenProps) {
+export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGames }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
   const [urlInput, setUrlInput] = useState(webhookUrl ?? '');
@@ -198,6 +199,13 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl }: SetupScree
             </p>
           )}
         </div>
+
+        <button
+          onClick={onViewPastGames}
+          className="w-full h-11 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[17px] font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          <span className="text-[19px]">📂</span> View Past Games
+        </button>
 
         <p className="text-center text-slate-600 text-[15px]">
           Pitcher and batting lineup are added on the Lineup tab

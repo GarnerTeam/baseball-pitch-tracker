@@ -1,6 +1,8 @@
 'use client';
+import { useState } from 'react';
 import { UserButton } from '@clerk/nextjs';
 import { useGame } from '@/hooks/use-game';
+import { GameState } from '@/types';
 import { SetupScreen } from '@/components/setup-screen';
 import { PitchScreen } from '@/components/pitch-screen';
 import { HitScreen } from '@/components/hit-screen';
@@ -8,6 +10,7 @@ import { LineupPanel } from '@/components/lineup-panel';
 import { AnalyticsScreen } from '@/components/analytics-screen';
 import { GameLog } from '@/components/game-log';
 import { NotificationToast } from '@/components/notification-toast';
+import { PastGamesBrowser } from '@/components/past-games-browser';
 
 const NAV_TABS = [
   { id: 'pitch' as const, label: 'Pitch', icon: '⚾' },
@@ -16,9 +19,85 @@ const NAV_TABS = [
   { id: 'log' as const, label: 'Log', icon: '📋' },
 ];
 
+// Past games are read-only — no Pitch tab, since the game is already completed.
+const HISTORY_NAV_TABS = NAV_TABS.filter(t => t.id !== 'pitch');
+const NOOP = () => {};
+
 export default function App() {
   const { state, actions } = useGame();
-  if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} />;
+
+  // Historical (read-only) game being viewed — entirely separate from the
+  // live useGame() state, so browsing past games can NEVER touch or clobber
+  // the in-progress game a coach may be actively tracking.
+  const [historyState, setHistoryState] = useState<GameState | null>(null);
+  const [historyTab, setHistoryTab] = useState<'lineup' | 'analytics' | 'log'>('lineup');
+  const [showPastGames, setShowPastGames] = useState(false);
+
+  if (showPastGames) {
+    return (
+      <PastGamesBrowser
+        webhookUrl={state.sheetsWebhookUrl}
+        currentGameId={state.id}
+        onClose={() => setShowPastGames(false)}
+        onSelectGame={(gs) => {
+          setHistoryState(gs);
+          setHistoryTab('lineup');
+          setShowPastGames(false);
+        }}
+      />
+    );
+  }
+
+  if (historyState) {
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col">
+        {/* Read-only banner */}
+        <div className="flex-shrink-0 bg-amber-950/60 border-b border-amber-800 px-4 py-2 flex items-center gap-3">
+          <button
+            onClick={() => setHistoryState(null)}
+            className="text-amber-300 hover:text-amber-200 text-[15px] font-semibold flex-shrink-0"
+          >
+            ‹ Back
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-amber-200 text-[15px] font-bold truncate">
+              🔒 {historyState.homeTeam || 'Home'} vs {historyState.visitingTeam || 'Away'} — Game Completed
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0">
+          {historyTab === 'lineup' && (
+            <LineupPanel
+              state={historyState}
+              readOnly={true}
+              onNextBatter={NOOP} onPrevBatter={NOOP} onEndAtBat={NOOP}
+              onChangePitcher={NOOP} onAddBatter={NOOP} onRemoveBatter={NOOP}
+              onSetBatterAt={NOOP} onReorderBatter={NOOP} onEditPitch={NOOP}
+              onUndoLastEnd={NOOP} onSetWebhookUrl={NOOP}
+            />
+          )}
+          {historyTab === 'analytics' && <AnalyticsScreen state={historyState} />}
+          {historyTab === 'log' && <GameLog state={historyState} />}
+        </div>
+
+        <nav className="flex-shrink-0 bg-slate-900 border-t border-slate-800 flex safe-area-inset-bottom">
+          {HISTORY_NAV_TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setHistoryTab(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors ${historyTab === tab.id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <span className="text-[27px] leading-none">{tab.icon}</span>
+              <span className="text-[15px] font-medium">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
+  if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} onViewPastGames={() => setShowPastGames(true)} />;
   if (state.phase === 'hit-mode') {
     return (
       <div className="fixed inset-0 bg-slate-950 z-50">
