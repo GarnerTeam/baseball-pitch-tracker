@@ -1,12 +1,18 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { GameState, PitchRecord, Player } from '@/types';
+import { GameState, PitchRecord, Player, PITCH_TYPE_COLORS, PITCH_TYPE_LABELS, PitchType } from '@/types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { PitchTypeBarChart, buildPitchTypeStats } from '@/components/pitch-type-chart';
 
 const OUTCOME_COLORS: Record<string, string> = {
   ball:'#22c55e','called-strike':'#ef4444','swinging-strike':'#dc2626',
   foul:'#f97316','foul-tip':'#fb923c','in-play':'#3b82f6',walk:'#10b981',strikeout:'#7f1d1d','hit-by-pitch':'#f59e0b',
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  ball: 'Balls', 'called-strike': 'Called Strikes', 'swinging-strike': 'Swinging Strikes',
+  foul: 'Fouls', 'foul-tip': 'Foul Tips', 'in-play': 'In Play', walk: 'Walks',
+  strikeout: 'Strikeouts', 'hit-by-pitch': 'HBP',
 };
 
 // ── Field geometry ─────────────────────────────────────────────────────────────
@@ -93,7 +99,9 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
 
   const oc: Record<string, number> = {};
   pitches.forEach(p => { oc[p.outcome] = (oc[p.outcome] ?? 0) + 1; });
-  const outcomeData = Object.entries(oc).map(([name, count]) => ({ name, count }));
+  const outcomeData = Object.entries(oc)
+    .filter(([name]) => name !== 'strikeout')
+    .map(([name, count]) => ({ name, label: OUTCOME_LABELS[name] ?? name, count }));
 
   const hm: number[][] = Array.from({ length: 5 }, () => Array(5).fill(0));
   pitches.forEach(p => { if (p.location) hm[p.location.row][p.location.col]++; });
@@ -184,7 +192,7 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={outcomeData} layout="vertical" margin={{ top: 4, right: 30, left: 60, bottom: 0 }}>
                 <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 15 }} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 15 }} width={70} />
+                <YAxis type="category" dataKey="label" tick={{ fill: '#94a3b8', fontSize: 15 }} width={82} />
                 <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                   {outcomeData.map(e => <Cell key={e.name} fill={OUTCOME_COLORS[e.name] ?? '#64748b'} />)}
@@ -221,31 +229,17 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
               </div>
             ))}
           </div>
-        </div>
-      </div>
-
-      {/* ── Batter Stats ── */}
-      {Object.keys(bStats).length > 0 && (
-        <div className="px-3 pt-4">
-          <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Batter Matchups</p>
-          <div className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
-            <div className="grid grid-cols-4 text-[15px] text-slate-500 px-3 py-2 border-b border-slate-700 bg-slate-800/50">
-              <span>Batter</span>
-              <span className="text-center">P</span>
-              <span className="text-center">K</span>
-              <span className="text-center">BB</span>
-            </div>
-            {Object.entries(bStats).map(([num, s]) => (
-              <div key={num} className="grid grid-cols-4 text-[18px] px-3 py-2.5 border-b border-slate-800 last:border-0">
-                <span className="text-slate-200 font-medium text-[15px]">#{num} {s.name}</span>
-                <span className="text-center text-slate-300">{s.pitches}</span>
-                <span className="text-center text-red-400 font-bold">{s.k}</span>
-                <span className="text-center text-green-400 font-bold">{s.bb}</span>
+          {/* Pitch type legend */}
+          <div className="flex gap-3 justify-center flex-wrap mt-3">
+            {(['FB', 'CB', 'SL', 'CH'] as PitchType[]).map(t => (
+              <div key={t} className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full" style={{ background: PITCH_TYPE_COLORS[t] }} />
+                <span className="text-slate-400 text-[15px]">{PITCH_TYPE_LABELS[t]}</span>
               </div>
             ))}
           </div>
         </div>
-      )}
+      </div>
 
       {/* ── Spray Chart ── */}
       {hits.length > 0 && (
