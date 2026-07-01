@@ -189,10 +189,10 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
         <div className="px-3 pt-4">
           <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Outcomes</p>
           <div className="bg-slate-900 rounded-xl p-3 border border-slate-700">
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={outcomeData} layout="vertical" margin={{ top: 4, right: 30, left: 60, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={Math.max(160, outcomeData.length * 28)}>
+              <BarChart data={outcomeData} layout="vertical" margin={{ top: 4, right: 30, left: 40, bottom: 0 }}>
                 <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 15 }} allowDecimals={false} />
-                <YAxis type="category" dataKey="label" tick={{ fill: '#94a3b8', fontSize: 15 }} width={82} />
+                <YAxis type="category" dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} width={100} interval={0} />
                 <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8 }} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                   {outcomeData.map(e => <Cell key={e.name} fill={OUTCOME_COLORS[e.name] ?? '#64748b'} />)}
