@@ -17,7 +17,7 @@ const COLUMNS = [
   'action','outcome','ballsAfter','strikesAfter',
   'hitType','hitTypeName','hitResult','hitResultName','hitZone','hitX','hitY',
   'runner1B','runner2B','runner3B','outsCount','baseState',
-  'id','isEdit',
+  'id','isEdit','userId',
 ];
 
 const HEADERS = [
@@ -28,7 +28,7 @@ const HEADERS = [
   'Action','Result','Balls After','Strikes After',
   'Hit Type','Hit Type Name','Hit Result','Hit Result Name','Hit Zone','Hit X','Hit Y',
   'Runner 1B','Runner 2B','Runner 3B','Outs','Base State',
-  'Row ID','Is Edit',
+  'Row ID','Is Edit','User ID',
 ];
 
 const HEADER_GROUPS = [
@@ -38,7 +38,7 @@ const HEADER_GROUPS = [
   { label:'Pitch',   cols:[12,18], bg:'#5c3d00', fg:'#ffffff' },
   { label:'Outcome', cols:[19,28], bg:'#5c1a1a', fg:'#ffffff' },
   { label:'Base',    cols:[29,33], bg:'#1a4a3a', fg:'#ffffff' },
-  { label:'Meta',    cols:[34,35], bg:'#2a2a2a', fg:'#aaaaaa' },
+  { label:'Meta',    cols:[34,36], bg:'#2a2a2a', fg:'#aaaaaa' },
 ];
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -104,25 +104,33 @@ function isEditRow(row, editIdx) {
 // ─── doGet ───────────────────────────────────────────────────────────────────
 
 /**
- * doGet — supports two actions:
+ * doGet — supports three actions. ALL actions require userId (or owner as a
+ * synonym) — every read is scoped to that one user's rows only, since this
+ * sheet now holds data for multiple independent coaches/subscribers.
  *
- *   action=history  batter=<name>  num=<jersey>
- *     Returns all non-edit pitches for that batter across all games.
- *     Matches by name (case-insensitive) OR number — whichever is provided.
+ *   action=history  userId=<id>  batter=<name>  num=<jersey>
+ *     Returns all non-edit pitches for that batter across all of THIS
+ *     user's games. Matches by name (case-insensitive) OR number.
  *
- *   action=scout  [gameId=<id>]
- *     Returns all non-edit pitches for the latest game (or a specific gameId).
- *     Used by the read-only Scout view on a second device.
+ *   action=scout  userId=<id>  [gameId=<id>]
+ *     Returns all non-edit pitches for the latest game (or a specific gameId)
+ *     belonging to THIS user. Used by the read-only Scout view and by the
+ *     "Past Games" browser in the main app.
  *
- *   action=games
- *     Returns a lightweight list of distinct completed games (gameId, teams,
- *     first/last timestamp, pitch count) — powers the "Past Games" browser
- *     in the main app. Does NOT return per-pitch data (use action=scout for that).
+ *   action=games  userId=<id>
+ *     Returns a lightweight list of THIS user's distinct completed games
+ *     (gameId, teams, first/last timestamp, pitch count) — powers the
+ *     "Past Games" browser. Does NOT return per-pitch data.
  */
 function doGet(e) {
   try {
     var params = (e && e.parameter) ? e.parameter : {};
     var action = (params.action || 'history').toLowerCase();
+    var userId = (params.userId || params.owner || '').trim();
+
+    if (!userId) {
+      return jsonOut({ error: 'Missing userId (or owner) parameter — every request must be scoped to a user', pitches: [], games: [] });
+    }
 
     if (action === 'history') {
       var batterName = (params.batter || '').trim();
@@ -130,15 +138,15 @@ function doGet(e) {
       if (!batterName && !batterNum) {
         return jsonOut({ error: 'Provide batter name or number', pitches: [] });
       }
-      return getBatterHistory(batterName, batterNum);
+      return getBatterHistory(batterName, batterNum, userId);
     }
 
     if (action === 'scout') {
-      return getGameScout((params.gameId || '').trim());
+      return getGameScout((params.gameId || '').trim(), userId);
     }
 
     if (action === 'games') {
-      return getGamesList();
+      return getGamesList(userId);
     }
 
     return jsonOut({ error: 'Unknown action: ' + action });
@@ -150,7 +158,7 @@ function doGet(e) {
 
 // ─── getBatterHistory ─────────────────────────────────────────────────────────
 
-function getBatterHistory(batterName, batterNum) {
+function getBatterHistory(batterName, batterNum, userId) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Pitches');
   if (!sheet) {
@@ -165,9 +173,10 @@ function getBatterHistory(batterName, batterNum) {
   var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
   var hmap     = buildHeaderMap(rawHeaders);
 
-  var nameIdx  = hmap['batterName']  !== undefined ? hmap['batterName']  : hmap['Batter Name'];
-  var numIdx   = hmap['batterNumber'] !== undefined ? hmap['batterNumber'] : hmap['Batter #'];
-  var editIdx  = hmap['isEdit']      !== undefined ? hmap['isEdit']      : hmap['Is Edit'];
+  var nameIdx   = hmap['batterName']  !== undefined ? hmap['batterName']  : hmap['Batter Name'];
+  var numIdx    = hmap['batterNumber'] !== undefined ? hmap['batterNumber'] : hmap['Batter #'];
+  var editIdx   = hmap['isEdit']      !== undefined ? hmap['isEdit']      : hmap['Is Edit'];
+  var userIdIdx = hmap['userId']      !== undefined ? hmap['userId']      : hmap['User ID'];
 
   if (nameIdx === undefined && numIdx === undefined) {
     return jsonOut({
@@ -178,10 +187,15 @@ function getBatterHistory(batterName, batterNum) {
 
   var nameLower = batterName.toLowerCase();
   var pitches   = [];
-  var sheetRows = data.length - 1; // total data rows (not counting header)
+  var sheetRows = 0; // count only rows owned by this user
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
+
+    // Every row must belong to this user — this is the hard tenant boundary.
+    // Rows with no userId (pre-migration legacy rows) never match anyone.
+    if (userIdIdx === undefined || String(row[userIdIdx] || '').trim() !== userId) continue;
+    sheetRows++;
 
     // Skip edit/correction rows — these are re-queued edits, not distinct pitches
     if (isEditRow(row, editIdx)) continue;
@@ -236,7 +250,7 @@ function getBatterHistory(batterName, batterNum) {
 
 // ─── getGameScout ─────────────────────────────────────────────────────────────
 
-function getGameScout(gameId) {
+function getGameScout(gameId, userId) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Pitches');
   if (!sheet) return jsonOut({ error: 'No sheet named "Pitches"', pitches: [] });
@@ -251,15 +265,18 @@ function getGameScout(gameId) {
 
   var gameIdIdx  = hmap['gameId']  !== undefined ? hmap['gameId']  : hmap['Game ID'];
   var editIdx    = hmap['isEdit']  !== undefined ? hmap['isEdit']  : hmap['Is Edit'];
+  var userIdIdx  = hmap['userId']  !== undefined ? hmap['userId']  : hmap['User ID'];
 
   if (gameIdIdx === undefined) {
     return jsonOut({ error: 'Cannot find gameId column', pitches: [] });
   }
 
-  // If no gameId specified, find the latest game in the sheet
+  // If no gameId specified, find the latest game belonging to THIS user
+  // (never the globally-latest game across every user's data).
   var targetGameId = gameId;
   if (!targetGameId) {
     for (var r = data.length - 1; r >= 1; r--) {
+      if (userIdIdx === undefined || String(data[r][userIdIdx] || '').trim() !== userId) continue;
       var v = String(data[r][gameIdIdx] || '').trim();
       if (v) { targetGameId = v; break; }
     }
@@ -269,6 +286,7 @@ function getGameScout(gameId) {
   var pitches = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
+    if (userIdIdx === undefined || String(row[userIdIdx] || '').trim() !== userId) continue;
     if (isEditRow(row, editIdx)) continue;
     var rowGameId = String(row[gameIdIdx] || '').trim();
     if (rowGameId !== targetGameId) continue;
@@ -293,7 +311,7 @@ function getGameScout(gameId) {
 
 // ─── getGamesList ─────────────────────────────────────────────────────────────
 
-function getGamesList() {
+function getGamesList(userId) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Pitches');
   if (!sheet) return jsonOut({ error: 'No sheet named "Pitches"', games: [] });
@@ -311,6 +329,7 @@ function getGamesList() {
   var homeIdx    = hmap['homeTeam']     !== undefined ? hmap['homeTeam']     : hmap['My Team'];
   var awayIdx    = hmap['visitingTeam'] !== undefined ? hmap['visitingTeam'] : hmap['Opposing Team'];
   var editIdx    = hmap['isEdit']       !== undefined ? hmap['isEdit']       : hmap['Is Edit'];
+  var userIdIdx  = hmap['userId']       !== undefined ? hmap['userId']       : hmap['User ID'];
 
   if (gameIdIdx === undefined) {
     return jsonOut({ error: 'Cannot find gameId column', games: [] });
@@ -318,11 +337,13 @@ function getGamesList() {
 
   // Aggregate per gameId: team names, first/last timestamp, pitch count.
   // Rows are appended chronologically, so first-seen order == game order.
+  // Every row must belong to this user — the hard tenant boundary.
   var gamesMap = {};
   var order    = [];
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
+    if (userIdIdx === undefined || String(row[userIdIdx] || '').trim() !== userId) continue;
     if (isEditRow(row, editIdx)) continue;
 
     var gid = String(row[gameIdIdx] || '').trim();
@@ -480,4 +501,66 @@ function setupSheet() {
       SpreadsheetApp.getUi().alert('Sheet already has all columns — no changes made.');
     }
   }
+}
+
+// ─── backfillOwnerId ────────────────────────────────────────────────────────
+//
+// ONE-TIME MIGRATION — run this manually from the Apps Script editor after
+// deploying the userId lockdown, so your existing rows (which predate the
+// User ID column) become visible again under your account.
+//
+// HOW TO RUN:
+//   1. Replace 'PASTE_YOUR_CLERK_USER_ID_HERE' below with your real Clerk
+//      user ID (find it in the Clerk dashboard → Users → click your user →
+//      copy the "User ID", it looks like "user_2abc123XYZ...").
+//   2. Select "backfillOwnerId" from the function dropdown at the top of
+//      this editor, then click ▶ Run.
+//   3. Check the execution log — it will report how many rows were updated.
+//   4. You can safely re-run this again later; it only touches rows that
+//      still have a blank User ID, so it will never overwrite anyone else's
+//      data once other users' rows are tagged with their own IDs.
+
+function backfillOwnerId() {
+  var YOUR_USER_ID = 'PASTE_YOUR_CLERK_USER_ID_HERE'; // ← edit this line
+
+  if (!YOUR_USER_ID || YOUR_USER_ID === 'PASTE_YOUR_CLERK_USER_ID_HERE') {
+    SpreadsheetApp.getUi().alert('Please edit backfillOwnerId() and paste in your real Clerk User ID first.');
+    return;
+  }
+
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('No sheet named "Pitches" found.');
+    return;
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    SpreadsheetApp.getUi().alert('No data rows to migrate.');
+    return;
+  }
+
+  var lastCol    = sheet.getLastColumn();
+  var data       = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+  var hmap       = buildHeaderMap(rawHeaders);
+  var userIdIdx  = hmap['userId'] !== undefined ? hmap['userId'] : hmap['User ID'];
+
+  if (userIdIdx === undefined) {
+    SpreadsheetApp.getUi().alert('User ID column not found — run setupSheet() first to add it.');
+    return;
+  }
+
+  var updated = 0;
+  for (var i = 1; i < data.length; i++) {
+    var current = String(data[i][userIdIdx] || '').trim();
+    if (current === '') {
+      sheet.getRange(i + 1, userIdIdx + 1).setValue(YOUR_USER_ID);
+      updated++;
+    }
+  }
+
+  SpreadsheetApp.getUi().alert('✅ Backfilled ' + updated + ' row(s) with your User ID.');
+  Logger.log('backfillOwnerId: updated ' + updated + ' rows');
 }

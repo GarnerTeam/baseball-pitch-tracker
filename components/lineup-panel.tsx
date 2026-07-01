@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, ReactNode } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { GameState, Player, AtBat, PitchRecord, PitchType, PitchOutcome, PITCH_TYPE_COLORS } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
@@ -19,6 +20,9 @@ interface LineupPanelProps {
   /** Optional content rendered between the Pitcher card and Batting Order —
    *  used by the Past Games view to place pitcher-swipe navigation there. */
   pitcherSwipeSlot?: ReactNode;
+  /** Explicit data owner — only needed when rendered in an unauthenticated
+   *  context (Scout page). Threaded down to BatterHistoryModal. */
+  ownerId?: string;
   onNextBatter: () => void;
   onPrevBatter: () => void;
   onEndAtBat: () => void;
@@ -295,7 +299,12 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
 
 // ── Scout Share Modal ─────────────────────────────────────────────────────────
 function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose: () => void }) {
-  const scoutUrl = `https://scout.robertegarner.com?url=${encodeURIComponent(webhookUrl)}`;
+  // The Scout link now carries the owner's Clerk user id — required so the
+  // (unauthenticated) Scout page can be scoped to just this coach's data,
+  // now that the sheet holds multiple coaches' rows.
+  const { user } = useUser();
+  const ownerId  = user?.id ?? '';
+  const scoutUrl = `https://scout.robertegarner.com?url=${encodeURIComponent(webhookUrl)}&owner=${encodeURIComponent(ownerId)}`;
   const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(scoutUrl)}&bgcolor=0f172a&color=e2e8f0&margin=12`;
   const [copied, setCopied] = useState(false);
 
@@ -481,7 +490,7 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
 }
 
 export function LineupPanel({
-  state, readOnly = false, pitcherSwipeSlot,
+  state, readOnly = false, pitcherSwipeSlot, ownerId,
   onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onReorderBatter, onEditPitch,
@@ -1142,6 +1151,7 @@ export function LineupPanel({
           webhookUrl={state.sheetsWebhookUrl}
           currentGameId={historyPlayer.currentGameId}
           currentGamePitches={historyPlayer.currentGamePitches}
+          ownerId={ownerId}
           onClose={() => setHistoryPlayer(null)}
         />
       )}

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 /**
  * Follow all redirects as POST, up to maxHops.
@@ -43,13 +44,23 @@ async function postFollowingRedirects(
 
 export async function POST(req: NextRequest) {
   try {
+    // Every write is stamped with the AUTHENTICATED user's id, server-side —
+    // never trust a client-supplied userId, or any user could write rows
+    // under someone else's identity. This route is already behind Clerk's
+    // middleware, so a missing session here means something is misconfigured.
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const { webhookUrl, pitches } = await req.json();
 
     if (!webhookUrl || !pitches?.length) {
       return NextResponse.json({ error: 'Missing webhookUrl or pitches' }, { status: 400 });
     }
 
-    const bodyStr = JSON.stringify(pitches);
+    const stampedPitches = pitches.map((p: Record<string, unknown>) => ({ ...p, userId }));
+    const bodyStr = JSON.stringify(stampedPitches);
     const { status, text, hops } = await postFollowingRedirects(webhookUrl, bodyStr);
 
     console.log('[sheets proxy] hops:', hops.length, 'final status:', status);

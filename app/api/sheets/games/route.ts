@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 
 /**
  * GET /api/sheets/games?url=<webhookUrl>
  * Proxies to Apps Script doGet(action=games) which scans the sheet and
  * returns a lightweight list of distinct completed games (gameId, teams,
  * date, pitch count) — powers the "Past Games" browser in the main app.
+ *
+ * This route is always authenticated (protected by middleware) — the userId
+ * scoping every result comes from the Clerk session, never from the client.
  */
 export async function GET(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const webhookUrl = searchParams.get("url");
 
@@ -15,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const qs = new URLSearchParams({ action: "games" });
+    const qs = new URLSearchParams({ action: "games", userId });
     const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
       method: "GET",
       redirect: "follow",

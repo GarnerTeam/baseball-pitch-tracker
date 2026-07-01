@@ -62,6 +62,7 @@ function useSwipe(onLeft: () => void, onRight: () => void) {
 }
 
 const URL_KEY = 'scout-webhook-url';
+const OWNER_KEY = 'scout-owner-id';
 const NOOP = () => {};
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -84,13 +85,26 @@ export function ScoutClient() {
     const params = new URLSearchParams(window.location.search);
     return params.get('url') ?? ((() => { try { return localStorage.getItem(URL_KEY) ?? DEFAULT_URL; } catch { return DEFAULT_URL; } })());
   });
+  // owner = the data owner's Clerk user id, embedded in the shared Scout link.
+  // Required now that the sheet holds multiple users' data — without it the
+  // Apps Script has no way to know whose games to return.
+  const [ownerId, setOwnerId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    const paramOwner = params.get('owner');
+    if (paramOwner) {
+      try { localStorage.setItem(OWNER_KEY, paramOwner); } catch {}
+      return paramOwner;
+    }
+    try { return localStorage.getItem(OWNER_KEY) ?? ''; } catch { return ''; }
+  });
   const [game, setGame]               = useState<ScoutGame | null>(null);
   const [loading, setLoading]         = useState(false);
   const [fetchError, setFetchError]   = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [tab, setTab]                 = useState<'lineup' | 'stats'>('lineup');
 
-  // Keep in sync if the URL param changes while mounted
+  // Keep in sync if the URL params change while mounted
   useEffect(() => {
     const paramUrl = searchParams?.get('url');
     if (paramUrl && paramUrl !== webhookUrl) {
@@ -98,14 +112,19 @@ export function ScoutClient() {
       setWebhookUrl(paramUrl);
       setUrlInput(paramUrl);
     }
+    const paramOwner = searchParams?.get('owner');
+    if (paramOwner && paramOwner !== ownerId) {
+      try { localStorage.setItem(OWNER_KEY, paramOwner); } catch {}
+      setOwnerId(paramOwner);
+    }
   }, [searchParams]);
 
-  const fetchGame = useCallback(async (url: string) => {
-    if (!url) return;
+  const fetchGame = useCallback(async (url: string, owner: string) => {
+    if (!url || !owner) return;
     setLoading(true);
     setFetchError(null);
     try {
-      const res  = await fetch(`/api/sheets/scout?${new URLSearchParams({ url })}`);
+      const res  = await fetch(`/api/sheets/scout?${new URLSearchParams({ url, owner })}`);
       const json = await res.json();
       if (json.error) { setFetchError(json.error); return; }
       const rows: SheetRow[] = json.pitches ?? [];
@@ -116,11 +135,11 @@ export function ScoutClient() {
   }, []);
 
   useEffect(() => {
-    if (!webhookUrl) return;
-    fetchGame(webhookUrl);
-    const id = setInterval(() => fetchGame(webhookUrl), 30_000);
+    if (!webhookUrl || !ownerId) return;
+    fetchGame(webhookUrl, ownerId);
+    const id = setInterval(() => fetchGame(webhookUrl, ownerId), 30_000);
     return () => clearInterval(id);
-  }, [webhookUrl, fetchGame]);
+  }, [webhookUrl, ownerId, fetchGame]);
 
   // Stats-tab pitcher navigation (swipe)
   const [statsPitcherIdx, setStatsPitcherIdx] = useState(0);
@@ -129,18 +148,26 @@ export function ScoutClient() {
     () => setStatsPitcherIdx(i => Math.max(i - 1, 0)),
   );
 
-  // ── URL setup ─────────────────────────────────────────────────────────────
-  if (!webhookUrl) {
+  // ── URL / owner setup ─────────────────────────────────────────────────────
+  if (!webhookUrl || !ownerId) {
     return (
       <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-5 p-8">
         <span className="text-6xl">⚾</span>
         <p className="text-2xl font-bold">Scout View</p>
-        <p className="text-slate-400 text-center">Enter your Google Sheets webhook URL to view live game data.</p>
+        <p className="text-slate-400 text-center">Ask your coach for the Scout link — it carries everything needed to load their game data.</p>
         <textarea value={urlInput} onChange={e => setUrlInput(e.target.value)}
           placeholder="https://script.google.com/macros/s/…/exec" rows={3}
           className="w-full max-w-md rounded-xl bg-slate-800 border border-slate-600 text-slate-100 text-sm p-3 outline-none focus:border-blue-500 font-mono" />
-        <button disabled={!urlInput.trim()}
-          onClick={() => { const u = urlInput.trim(); localStorage.setItem(URL_KEY, u); setWebhookUrl(u); }}
+        <input value={ownerId} onChange={e => setOwnerId(e.target.value)}
+          placeholder="owner id (from the coach's Scout link)"
+          className="w-full max-w-md h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 text-sm px-3 outline-none focus:border-blue-500 font-mono" />
+        <button disabled={!urlInput.trim() || !ownerId.trim()}
+          onClick={() => {
+            const u = urlInput.trim();
+            localStorage.setItem(URL_KEY, u);
+            localStorage.setItem(OWNER_KEY, ownerId.trim());
+            setWebhookUrl(u);
+          }}
           className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-lg font-semibold">
           Connect
         </button>
@@ -157,7 +184,7 @@ export function ScoutClient() {
       <p className="text-red-400 text-lg font-semibold">Failed to load data</p>
       <p className="text-slate-500 text-sm text-center">{fetchError}</p>
       <p className="text-slate-600 text-xs text-center">Make sure the Apps Script has been updated with the new doGet() and redeployed.</p>
-      <button onClick={() => fetchGame(webhookUrl)} className="px-6 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-base font-medium">Retry</button>
+      <button onClick={() => fetchGame(webhookUrl, ownerId)} className="px-6 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-base font-medium">Retry</button>
       <button onClick={() => { localStorage.removeItem(URL_KEY); setWebhookUrl(''); }} className="text-slate-600 text-sm underline mt-2">Change URL</button>
     </div>
   );
@@ -167,7 +194,7 @@ export function ScoutClient() {
       <span className="text-5xl">⚾</span>
       <p className="text-xl font-bold text-slate-300">No game data yet</p>
       <p className="text-slate-500 text-center">Waiting for pitches to sync from the recording device.</p>
-      <button onClick={() => fetchGame(webhookUrl)} className="mt-2 px-6 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-base">Refresh</button>
+      <button onClick={() => fetchGame(webhookUrl, ownerId)} className="mt-2 px-6 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-base">Refresh</button>
     </div>
   );
 
@@ -218,7 +245,7 @@ export function ScoutClient() {
           </p>
           <p className="text-slate-500 text-xs">View only · {timeStr}{loading ? ' · refreshing…' : ''}</p>
         </div>
-        <button onClick={() => fetchGame(webhookUrl)}
+        <button onClick={() => fetchGame(webhookUrl, ownerId)}
           className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm font-medium border border-slate-700">↻</button>
       </div>
 
@@ -238,6 +265,7 @@ export function ScoutClient() {
           <LineupPanel
             state={fakeState}
             readOnly={true}
+            ownerId={ownerId}
             onNextBatter={NOOP}
             onPrevBatter={NOOP}
             onEndAtBat={NOOP}

@@ -8,6 +8,11 @@ export default function SignUpPage() {
         <h1 className="text-3xl font-bold text-white tracking-tight">On the Bump</h1>
         <p className="text-slate-400 mt-1 text-sm">Create your free coach account</p>
       </div>
+      <p className="text-slate-500 text-xs text-center max-w-sm px-4 leading-relaxed">
+        🔒 We do not sell or trade your data. Each coach can only access the
+        data they've personally collected — no one else can see your pitches,
+        batters, or scouting history.
+      </p>
       <SignUp
         appearance={{
           variables: {

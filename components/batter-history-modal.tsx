@@ -270,13 +270,17 @@ interface Props {
   currentGameId?: string;
   /** Live pitches for this batter from the current game (app state, not sheet). */
   currentGamePitches?: PitchRow[];
+  /** Explicit data owner — only needed for unauthenticated contexts (Scout).
+   *  Inside the logged-in main app this is omitted; the API derives the
+   *  owner from the Clerk session instead. */
+  ownerId?: string;
   onClose: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function BatterHistoryModal({
   playerName, playerNumber, webhookUrl,
-  currentGameId, currentGamePitches = [],
+  currentGameId, currentGamePitches = [], ownerId,
   onClose,
 }: Props) {
   const [loading, setLoading] = useState(true);
@@ -297,6 +301,7 @@ export function BatterHistoryModal({
       return;
     }
     const qs = new URLSearchParams({ url: webhookUrl, batter: playerName, num: playerNumber });
+    if (ownerId) qs.set('owner', ownerId);
     fetch(`/api/sheets/history?${qs}`)
       .then(r => r.json())
       .then(d => {
@@ -310,7 +315,7 @@ export function BatterHistoryModal({
       })
       .catch(e => setFetchError(String(e.message ?? e)))
       .finally(() => setLoading(false));
-  }, [playerName, playerNumber, webhookUrl]);
+  }, [playerName, playerNumber, webhookUrl, ownerId]);
 
   // ── Predominant hand ──────────────────────────────────────────────────────
   const handCounts = { R: 0, L: 0 };

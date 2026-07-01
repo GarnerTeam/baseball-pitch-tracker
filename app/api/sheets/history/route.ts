@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 /**
- * GET /api/sheets/history?url=<webhookUrl>&batter=<name>&num=<number>
+ * GET /api/sheets/history?url=<webhookUrl>&batter=<name>&num=<number>[&owner=<userId>]
  * Proxies to the Apps Script doGet() endpoint which queries the full spreadsheet.
+ *
+ * Dual-mode auth, same pattern as /api/sheets/scout: a real Clerk session
+ * always wins over any client-supplied `owner` param; the `owner` param only
+ * matters for unauthenticated Scout-page visitors.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -14,8 +19,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
 
+  const { userId: sessionUserId } = await auth();
+  const ownerParam = searchParams.get('owner') ?? '';
+  const userId = sessionUserId || ownerParam;
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Missing owner — no session and no owner parameter provided' }, { status: 400 });
+  }
+
   try {
-    const qs = new URLSearchParams({ action: 'history', batter, num });
+    const qs = new URLSearchParams({ action: 'history', batter, num, userId });
     // GET requests to Apps Script follow redirects normally
     const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
       method: 'GET',
