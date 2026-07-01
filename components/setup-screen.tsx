@@ -227,7 +227,9 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
         </div>
 
         {/* ── Team Entry Card ── */}
-        <div className="bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
+        {/* overflow-visible (not hidden) — the Opposing Team autocomplete
+            dropdown must be able to extend past this card's bottom edge */}
+        <div className="bg-slate-900 rounded-2xl border border-slate-700 overflow-visible">
 
           <div className="px-4 pt-4 pb-3">
             <label className="block text-[16px] font-bold uppercase tracking-widest text-emerald-400 mb-2">
