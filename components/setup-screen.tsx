@@ -1,6 +1,6 @@
 'use client';
 import { UserButton } from '@clerk/nextjs';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface SetupScreenProps {
   onStart: (homeTeam: string, visitingTeam: string) => void;
@@ -9,14 +9,107 @@ interface SetupScreenProps {
   onViewPastGames: () => void;
 }
 
+/**
+ * Text input with an autocomplete dropdown of previously used team names
+ * (pulled from every game recorded in the Sheet this season). Typing filters
+ * the list; tapping a suggestion fills the field. Falls back to a plain
+ * text input with no dropdown if no team names are known yet.
+ */
+function TeamNameInput({
+  value, onChange, placeholder, knownTeams, accentColor, onEnter,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  knownTeams: string[];
+  accentColor: 'emerald' | 'blue';
+  onEnter?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const matches = knownTeams.filter(t =>
+    t.toLowerCase().includes(value.trim().toLowerCase())
+  );
+  const showDropdown = open && knownTeams.length > 0 && matches.length > 0;
+  const focusBorder = accentColor === 'emerald' ? 'focus:border-emerald-500' : 'focus:border-blue-500';
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        onKeyDown={e => { if (e.key === 'Enter' && onEnter) onEnter(); }}
+        className={`w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-4 text-[21px] font-medium outline-none ${focusBorder} transition-colors placeholder:text-slate-600`}
+        autoComplete="off"
+      />
+      {showDropdown && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-slate-800 border border-slate-600 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+          {matches.map(team => (
+            <button
+              key={team}
+              type="button"
+              onClick={() => { onChange(team); setOpen(false); }}
+              className="w-full text-left px-4 py-2.5 text-[18px] text-slate-200 hover:bg-slate-700 active:bg-slate-700 transition-colors border-b border-slate-700/60 last:border-0"
+            >
+              {team}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGames }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
   const [urlInput, setUrlInput] = useState(webhookUrl ?? '');
   const [editingUrl, setEditingUrl] = useState(!webhookUrl);
+  const [knownTeams, setKnownTeams] = useState<string[]>([]);
 
   const isConnected = !!webhookUrl?.trim();
   const canStart    = home.trim().length > 0 && visiting.trim().length > 0;
+
+  // Pull every team name seen across the season (both home and away) from
+  // past games, so coaches can pick from a list instead of retyping names.
+  useEffect(() => {
+    if (!webhookUrl) { setKnownTeams([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/sheets/games?${new URLSearchParams({ url: webhookUrl })}`);
+        const json = await res.json();
+        if (cancelled || json.error) return;
+        const games: { homeTeam?: string; visitingTeam?: string }[] = json.games ?? [];
+        const seen = new Set<string>();
+        const names: string[] = [];
+        for (const g of games) {
+          for (const raw of [g.homeTeam, g.visitingTeam]) {
+            const name = (raw ?? '').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (!seen.has(key)) { seen.add(key); names.push(name); }
+          }
+        }
+        names.sort((a, b) => a.localeCompare(b));
+        setKnownTeams(names);
+      } catch { /* silent — autocomplete is a nice-to-have, not critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, [webhookUrl]);
 
   function handleSaveUrl() {
     const trimmed = urlInput.trim();
@@ -140,11 +233,12 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
             <label className="block text-[16px] font-bold uppercase tracking-widest text-emerald-400 mb-2">
               🏠 My Team
             </label>
-            <input
+            <TeamNameInput
               value={home}
-              onChange={e => setHome(e.target.value)}
+              onChange={setHome}
               placeholder="e.g. Rockets"
-              className="w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-4 text-[21px] font-medium outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+              knownTeams={knownTeams}
+              accentColor="emerald"
             />
           </div>
 
@@ -158,12 +252,13 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
             <label className="block text-[16px] font-bold uppercase tracking-widest text-blue-400 mb-2">
               ✈ Opposing Team Name
             </label>
-            <input
+            <TeamNameInput
               value={visiting}
-              onChange={e => setVisiting(e.target.value)}
+              onChange={setVisiting}
               placeholder="Opposing team name"
-              onKeyDown={e => { if (e.key === 'Enter' && canStart) handleStart(); }}
-              className="w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-4 text-[21px] font-medium outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
+              knownTeams={knownTeams}
+              accentColor="blue"
+              onEnter={() => { if (canStart) handleStart(); }}
             />
           </div>
         </div>
