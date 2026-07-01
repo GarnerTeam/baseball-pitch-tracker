@@ -16,6 +16,9 @@ interface SyncStatus {
 interface LineupPanelProps {
   state: GameState;
   readOnly?: boolean;
+  /** Optional content rendered between the Pitcher card and Batting Order —
+   *  used by the Past Games view to place pitcher-swipe navigation there. */
+  pitcherSwipeSlot?: ReactNode;
   onNextBatter: () => void;
   onPrevBatter: () => void;
   onEndAtBat: () => void;
@@ -478,7 +481,7 @@ function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
 }
 
 export function LineupPanel({
-  state, readOnly = false,
+  state, readOnly = false, pitcherSwipeSlot,
   onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onReorderBatter, onEditPitch,
@@ -812,6 +815,8 @@ export function LineupPanel({
           </div>
         )}
       </div>
+
+      {pitcherSwipeSlot}
 
       {/* ── Batting Order ────────────────────────────────────────────────── */}
       <div className="px-4 pt-1 pb-4">
