@@ -121,20 +121,24 @@ export default function App() {
       </div>
       <nav className="flex-shrink-0 bg-slate-900 border-t border-slate-800 flex safe-area-inset-bottom">
         {NAV_TABS.map(tab => (
-          <button key={tab.id} onClick={() => actions.setTab(tab.id)} className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors ${state.activeTab === tab.id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
-            <span className="text-[27px] leading-none">{tab.icon}</span>
-            <span className="text-[15px] font-medium">{tab.label}</span>
+          <button key={tab.id} onClick={() => actions.setTab(tab.id)} className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${state.activeTab === tab.id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+            <span className="text-[22px] leading-none">{tab.icon}</span>
+            <span className="text-[12px] font-medium">{tab.label}</span>
           </button>
         ))}
-        <button onClick={() => { if (confirm('Start a new game? Data will be cleared.')) actions.newGame(); }} className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-slate-500 hover:text-red-400 transition-colors">
-          <span className="text-[27px] leading-none">🔄</span>
-          <span className="text-[15px] font-medium">New</span>
+        <button onClick={() => setShowPastGames(true)} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-slate-300 transition-colors">
+          <span className="text-[22px] leading-none">📂</span>
+          <span className="text-[12px] font-medium">History</span>
         </button>
-        <div className="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5">
+        <button onClick={() => { if (confirm('Start a new game? Data will be cleared.')) actions.newGame(); }} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-red-400 transition-colors">
+          <span className="text-[22px] leading-none">🔄</span>
+          <span className="text-[12px] font-medium">New</span>
+        </button>
+        <div className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5">
           <UserButton
             appearance={{
               elements: {
-                avatarBox: 'w-7 h-7',
+                avatarBox: 'w-6 h-6',
                 userButtonPopoverCard: 'bg-slate-900 border border-slate-700',
                 userButtonPopoverActionButton: 'text-slate-200 hover:bg-slate-800',
                 userButtonPopoverActionButtonText: 'text-slate-200',
@@ -142,7 +146,7 @@ export default function App() {
               },
             }}
           />
-          <span className="text-[15px] font-medium text-slate-500">Account</span>
+          <span className="text-[12px] font-medium text-slate-500">Account</span>
         </div>
       </nav>
     </div>
