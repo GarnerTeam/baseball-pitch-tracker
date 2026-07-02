@@ -23,7 +23,12 @@ export default clerkMiddleware(async (auth, req) => {
     !pathname.startsWith('/api/sheets/history') &&
     !pathname.startsWith('/_next')
   ) {
-    return NextResponse.redirect(new URL('/scout', req.url));
+    // Preserve the query string (url + owner) — a bare `new URL('/scout', req.url)`
+    // silently drops it, which broke every Scout QR/link that pointed at the
+    // bare domain root instead of /scout directly.
+    const redirectUrl = new URL('/scout', req.url);
+    redirectUrl.search = new URL(req.url).search;
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (!isPublicRoute(req)) {
