@@ -1,13 +1,29 @@
 'use client';
 import { UserButton } from '@clerk/nextjs';
 import { useState, useEffect, useRef } from 'react';
+import { GameState } from '@/types';
+import { reconstructGame, buildResumableGameState } from '@/lib/game-reconstruct';
 
 interface SetupScreenProps {
   onStart: (homeTeam: string, visitingTeam: string) => void;
   webhookUrl: string;
   onSetWebhookUrl: (url: string) => void;
   onViewPastGames: () => void;
+  onResumeGame: (state: GameState) => void;
 }
+
+interface GameSummary {
+  gameId: string;
+  homeTeam: string;
+  visitingTeam: string;
+  lastTimestamp: string;
+  pitchCount: number;
+}
+
+// Only offer to resume a game whose most recent pitch was synced within this
+// window — old completed games the coach already finished shouldn't keep
+// popping up as a "resume?" prompt every time Setup loads.
+const RESUME_WINDOW_HOURS = 20;
 
 /**
  * Text input with an autocomplete dropdown of previously used team names
@@ -73,12 +89,15 @@ function TeamNameInput({
   );
 }
 
-export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGames }: SetupScreenProps) {
+export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGames, onResumeGame }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
   const [urlInput, setUrlInput] = useState(webhookUrl ?? '');
   const [editingUrl, setEditingUrl] = useState(!webhookUrl);
   const [knownTeams, setKnownTeams] = useState<string[]>([]);
+  const [resumeCandidate, setResumeCandidate] = useState<GameSummary | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const isConnected = !!webhookUrl?.trim();
   const canStart    = home.trim().length > 0 && visiting.trim().length > 0;
@@ -93,7 +112,7 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
         const res = await fetch(`/api/sheets/games?${new URLSearchParams({ url: webhookUrl })}`);
         const json = await res.json();
         if (cancelled || json.error) return;
-        const games: { homeTeam?: string; visitingTeam?: string }[] = json.games ?? [];
+        const games: GameSummary[] = json.games ?? [];
         const seen = new Set<string>();
         const names: string[] = [];
         for (const g of games) {
@@ -106,6 +125,20 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
         }
         names.sort((a, b) => a.localeCompare(b));
         setKnownTeams(names);
+
+        // ── Resume Game candidate ─────────────────────────────────
+        // games[] is already sorted most-recently-active first. Offer the
+        // most recent one with pitches, as long as it's recent enough to
+        // plausibly still be "in progress" rather than an already-finished
+        // game from a previous session.
+        const candidate = games.find(g => g.pitchCount > 0);
+        if (candidate) {
+          const last = new Date(candidate.lastTimestamp);
+          const hoursSince = isNaN(last.getTime()) ? Infinity : (Date.now() - last.getTime()) / 36e5;
+          if (hoursSince <= RESUME_WINDOW_HOURS) {
+            setResumeCandidate(candidate);
+          }
+        }
       } catch { /* silent — autocomplete is a nice-to-have, not critical */ }
     })();
     return () => { cancelled = true; };
@@ -126,6 +159,31 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
     onStart(home.trim(), visiting.trim());
   }
 
+  // ── Resume Game ─────────────────────────────────────────────────────────────
+  // Rebuilds a live, continuable GameState from every pitch already synced
+  // for this game (lineup, pitcher history, full pitch log for insights) and
+  // hands it to the real game reducer — see buildResumableGameState() for
+  // exactly what is/isn't restored.
+  async function handleResume() {
+    if (!resumeCandidate || !webhookUrl) return;
+    setResuming(true);
+    setResumeError(null);
+    try {
+      const res = await fetch(`/api/sheets/scout?${new URLSearchParams({ url: webhookUrl, gameId: resumeCandidate.gameId })}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      const rows = json.pitches ?? [];
+      if (rows.length === 0) throw new Error('No pitch data found for this game.');
+      const game = reconstructGame(rows);
+      const resumedState = buildResumableGameState(game, webhookUrl);
+      onResumeGame(resumedState);
+    } catch (e) {
+      setResumeError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setResuming(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-5">
@@ -136,6 +194,40 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
           <h1 className="text-[39px] font-bold tracking-tight">On the Bump</h1>
           <p className="text-slate-400 text-[18px] mt-1">Coach's pitch tracking tool</p>
         </div>
+
+        {/* ── Resume Game banner ── */}
+        {resumeCandidate && (
+          <div className="rounded-2xl border border-blue-700 bg-blue-950/40 px-4 py-3 space-y-2">
+            <p className="text-blue-300 text-[15px] font-bold uppercase tracking-wide">⏱ Continue Last Game?</p>
+            <p className="text-[18px]">
+              <span className="text-emerald-300 font-semibold">{resumeCandidate.homeTeam || 'Home'}</span>
+              <span className="text-slate-600 mx-1.5">vs</span>
+              <span className="text-blue-300 font-semibold">{resumeCandidate.visitingTeam || 'Away'}</span>
+            </p>
+            <p className="text-slate-500 text-[13px]">
+              {resumeCandidate.pitchCount} pitch{resumeCandidate.pitchCount !== 1 ? 'es' : ''} recorded so far · lineup and pitcher are restored, picks up with the next batter
+            </p>
+            {resumeError && (
+              <p className="text-red-400 text-[13px]">{resumeError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={handleResume}
+                disabled={resuming}
+                className="flex-1 h-10 rounded-xl bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-[16px] font-semibold transition-colors"
+              >
+                {resuming ? 'Loading…' : 'Resume Game'}
+              </button>
+              <button
+                onClick={() => setResumeCandidate(null)}
+                disabled={resuming}
+                className="px-4 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-[16px] transition-colors disabled:opacity-50"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Data Backup Section ── */}
         <div className={`rounded-2xl border ${isConnected && !editingUrl ? 'border-emerald-700 bg-emerald-950/40' : 'border-amber-700 bg-amber-950/30'} overflow-hidden`}>

@@ -13,7 +13,7 @@ import {
   BaseState, ContactType,
 } from '@/types';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 export interface SheetRow {
   gameId: string; timestamp: string;
   homeTeam: string; visitingTeam: string;
@@ -52,7 +52,7 @@ export interface ScoutGame {
   allRows: SheetRow[];
 }
 
-// ── Reconstruction ────────────────────────────────────────────────────────────
+// ── Reconstruction ─────────────────────────────────────────────────────────────────────
 export function reconstructGame(rows: SheetRow[]): ScoutGame {
   if (!rows.length) return { gameId: '', homeTeam: '', visitingTeam: '', pitchers: [], batters: [], allRows: [] };
   const first = rows[0];
@@ -107,7 +107,7 @@ export function reconstructGame(rows: SheetRow[]): ScoutGame {
   };
 }
 
-// ── SheetRow → PitchRecord conversion ────────────────────────────────────────
+// ── SheetRow → PitchRecord conversion ──────────────────────────────────────
 
 /**
  * Reverse-maps a pitchLocation string (e.g. "Z5", "B-Up-In") back to a PitchLocation
@@ -317,7 +317,98 @@ export function buildFakeGameState(game: ScoutGame, webhookUrl: string): GameSta
   };
 }
 
-// ── Per-pitcher filtering (for pitcher-swipe views) ──────────────────────────
+/**
+ * Build a LIVE, continuable GameState from synced Sheet rows — used by the
+ * "Resume Game" flow on the Setup screen when a coach switches device/browser
+ * mid-game (e.g. iOS treats a home-screen PWA and an in-browser tab as
+ * completely separate local storage, so the in-progress game recorded in one
+ * never appears in the other, even for the same logged-in account).
+ *
+ * This is the "lighter" resume: it restores the lineup, pitcher/pitcher
+ * history, and every pitch already recorded (so Analytics/Pitch Log/batter
+ * history all have full insight into what happened before the switch) and
+ * carries forward the actual outs/base-runner situation from the last synced
+ * pitch — but it does NOT try to resume the exact interrupted at-bat's
+ * in-progress ball/strike count. Instead it starts a fresh at-bat for the
+ * NEXT batter in the order, mirroring what a coach would naturally do in the
+ * moment (tap "Next Batter" and move on) rather than attempting a riskier
+ * exact reconstruction of a count that was never fully synced as "complete".
+ */
+export function buildResumableGameState(game: ScoutGame, webhookUrl: string): GameState {
+  const base = buildFakeGameState(game, webhookUrl);
+
+  // Find the chronologically last pitch (by at-bat then pitch number) to
+  // determine who's up next and what the base/outs situation was.
+  const sortedRows = [...game.allRows].sort((a, b) => {
+    const abA = Number(a.atBatNumber) || 0, abB = Number(b.atBatNumber) || 0;
+    if (abA !== abB) return abA - abB;
+    return (Number(a.pitchNumber) || 0) - (Number(b.pitchNumber) || 0);
+  });
+  const lastRow = sortedRows[sortedRows.length - 1];
+
+  // Resolve the last-active batter's index via the same lineup key used to
+  // build base.lineup (`${number}|${name}`) — NOT the raw sheet
+  // lineupPosition column, which uses a different (1-based) offset than the
+  // in-app 0-based index and would silently produce the wrong "next batter".
+  let lastBatterIdx = -1;
+  if (lastRow) {
+    const key = `${lastRow.batterNumber}|${lastRow.batterName}`;
+    lastBatterIdx = base.lineup.findIndex(p => p.id === key);
+  }
+  const lineupLen = base.lineup.length;
+  const nextBatterIdx = lineupLen > 0
+    ? (lastBatterIdx >= 0 ? (lastBatterIdx + 1) % lineupLen : 0)
+    : 0;
+
+  const nextAtBatNumber = base.allAtBats
+    .filter(ab => ab.batterIndex === nextBatterIdx && ab.isComplete)
+    .length + 1;
+  const nextPlayerId = base.lineup[nextBatterIdx]?.id;
+
+  const gameId = game.gameId || `game-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const newAtBat: AtBat = {
+    id: `${gameId}-ab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    batterIndex: nextBatterIdx,
+    playerId: nextPlayerId,
+    atBatNumber: nextAtBatNumber,
+    pitches: [],
+    balls: 0,
+    strikes: 0,
+    isComplete: false,
+    startedAt: new Date().toISOString(),
+  };
+
+  // Base/outs situation is already stored per-pitch (baseState/outsCount
+  // columns) — cheap to carry forward so the resumed game doesn't silently
+  // reset runners/outs to zero mid-inning.
+  function parseBaseState(s: string): BaseState {
+    if (s === 'Loaded') return { first: true, second: true, third: true };
+    return {
+      first:  s.includes('1B'),
+      second: s.includes('2B'),
+      third:  s.includes('3B'),
+    };
+  }
+  const baseState: BaseState = lastRow
+    ? parseBaseState(String(lastRow.baseState ?? ''))
+    : { first: false, second: false, third: false };
+  const outsCount = (lastRow ? (Number(lastRow.outsCount) || 0) : 0) as 0 | 1 | 2;
+
+  return {
+    ...base,
+    id: gameId,
+    phase: 'pitching',
+    activeTab: 'pitch',
+    currentBatterIndex: nextBatterIdx,
+    currentAtBat: newAtBat,
+    baseState,
+    outsCount,
+    batterHand: base.lineup[nextBatterIdx]?.hand ?? null,
+    syncQueue: [],
+  };
+}
+
+// ── Per-pitcher filtering (for pitcher-swipe views) ─────────────────────────────
 
 /**
  * Returns the full list of pitchers who appeared in a reconstructed game,
