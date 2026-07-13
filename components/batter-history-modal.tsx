@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 interface PitchRow {
   gameId?: string;
   timestamp?: string;
@@ -45,8 +45,8 @@ const ZONE_NAMES_LHB: Record<string, string> = {
   Z7:'Lo-Out', Z8:'Low',     Z9:'Lo-In',
 };
 
-// ── Color scale ───────────────────────────────────────────────────────────────
-// ── 1st / 2nd pitch intel helpers ────────────────────────────────────────────
+// ── Color scale ──────────────────────────────────────────────────────────────────────
+// ── 1st / 2nd pitch intel helpers ──────────────────────────────────────────────
 const OUTCOME_SHORT_MAP: Record<string, string> = {
   ball: 'Ball', 'called-strike': 'Kl', 'swinging-strike': 'Ks',
   foul: 'F', 'foul-tip': 'F✓', 'in-play': 'IP', walk: 'BB', strikeout: 'K',
@@ -117,7 +117,7 @@ function bestPitch(map: Record<string, number>): string | null {
   return top.length > 0 ? `${top[0][0]} ×${top[0][1]}` : null;
 }
 
-// ── Pitch-type colour maps (match pitch page) ────────────────────────────────
+// ── Pitch-type colour maps (match pitch page) ────────────────────────────
 // Display label (Ch not CH) and colours from PITCH_TYPE_COLORS in types/index.ts
 const PT_LABEL: Record<string, string> = { FB:'FB', CB:'CB', SL:'SL', CH:'Ch' };
 const PT_COLOR: Record<string, string> = {
@@ -133,14 +133,14 @@ const PT_BG: Record<string, string> = {
   SL: '#10062d',
   CH: '#2d1207',
 };
-// ── Hit result display ────────────────────────────────────────────────────────
+// ── Hit result display ──────────────────────────────────────────────────────────────────
 const RES_LABEL: Record<string, string> = { single:'1B', double:'2B', triple:'3B', 'home-run':'HR', out:'Out', error:'Err' };
 const RES_COLOR: Record<string, string> = { single:'#14b8a6', double:'#60a5fa', triple:'#818cf8', 'home-run':'#eab308', out:'#64748b', error:'#f59e0b' };
 const RES_ORDER = ['home-run','triple','double','single','error','out'];
 
 
 
-// ── Hit zone abbreviations ────────────────────────────────────────────────────
+// ── Hit zone abbreviations ─────────────────────────────────────────────────────────────────────
 const HZ_ABBR: Record<string, string> = {
   'C': 'C', 'SS': 'SS', '3B': '3B', '2B': '2B', '1B': '1B',
   'Shallow Left': 'Sh·L', 'Shallow Center': 'Sh·C', 'Shallow Right': 'Sh·R',
@@ -155,7 +155,7 @@ function topZone(map: Record<string, number>): string | null {
   return HZ_ABBR[top] ?? top;
 }
 
-// ── Location normalizer ───────────────────────────────────────────────────────
+// ── Location normalizer ─────────────────────────────────────────────────────────
 // When batter hand was null at record time, ballLocationLabel() falls back to
 // "Left"/"Right"/"L"/"R" instead of "In"/"Out". We remap using the pitch's own
 // hand (or gridHand as fallback) so every pitch lands in a grid cell.
@@ -171,7 +171,7 @@ function normalizeLocation(loc: string, hand: 'R' | 'L'): string {
     .replace(/-R$/, `-${outs}`);
 }
 
-// ── 5×5 grid helpers ──────────────────────────────────────────────────────────
+// ── 5×5 grid helpers ───────────────────────────────────────────────────────────────────
 function cellLocKey(row: number, col: number, h: 'R' | 'L'): string | null {
   if (row >= 1 && row <= 3 && col >= 1 && col <= 3) {
     return `Z${(row - 1) * 3 + (col - 1) + 1}`;
@@ -216,7 +216,7 @@ function cellLabel(row: number, col: number, h: 'R' | 'L'): string {
   return '';
 }
 
-// ── Shadow cells ─────────────────────────────────────────────────────────────
+// ── Shadow cells ───────────────────────────────────────────────────────────────────
 // Corner pairs (0,1)/(0,0), (0,3)/(0,4), (4,1)/(4,0), (4,3)/(4,4) share the
 // same pitchLocation key. The inner cell is a "shadow" — it shows the heat
 // colour but no count, so the grid total matches the actual pitch count.
@@ -224,7 +224,7 @@ function isShadowCell(row: number, col: number): boolean {
   return (row === 0 || row === 4) && (col === 1 || col === 3);
 }
 
-// ── Vertical bat SVG ─────────────────────────────────────────────────────────
+// ── Vertical bat SVG ────────────────────────────────────────────────────────────────
 // Barrel at top, knob at bottom — placed left for RHB, right for LHB
 function BatSVG() {
   return (
@@ -245,7 +245,7 @@ function BatSVG() {
   );
 }
 
-// ── Spray chart SVG constants ─────────────────────────────────────────────────
+// ── Spray chart SVG constants ───────────────────────────────────────────────────────────────────
 const SW=400,SH=390,SHX=200,SHY=365;
 const SR_FENCE=270,SR_WARN=220;
 const SLFPX=9,SLFPY=174,SRFPX=391,SRFPY=174;
@@ -277,7 +277,7 @@ interface Props {
   onClose: () => void;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────────
 export function BatterHistoryModal({
   playerName, playerNumber, webhookUrl,
   currentGameId, currentGamePitches = [], ownerId,
@@ -289,7 +289,7 @@ export function BatterHistoryModal({
   const [histPitches, setHistPitches] = useState<PitchRow[]>([]);
   const [view, setView] = useState<'heatmap' | 'spray'>('heatmap');
 
-  // ── Merge historical + current-game pitches ───────────────────────────────
+  // ── Merge historical + current-game pitches ─────────────────────────
   // currentGamePitches come from app state (always fresh); histPitches come from
   // the sheet with today's gameId stripped out — so no duplicates.
   const pitches: PitchRow[] = [...histPitches, ...currentGamePitches];
@@ -317,7 +317,7 @@ export function BatterHistoryModal({
       .finally(() => setLoading(false));
   }, [playerName, playerNumber, webhookUrl, ownerId]);
 
-  // ── Predominant hand ──────────────────────────────────────────────────────
+  // ── Predominant hand ───────────────────────────────────────────────────
   const handCounts = { R: 0, L: 0 };
   for (const p of pitches) {
     if (p.batterHand === 'R') handCounts.R++;
@@ -331,7 +331,7 @@ export function BatterHistoryModal({
   //   LHB → left = Outside → Z1 = 'Hi-Out'
   const ZONE_NAMES = gridHand === 'R' ? ZONE_NAMES_RHB : ZONE_NAMES_LHB;
 
-  // ── Build per-location stats (normalize Left/Right → In/Out) ──────────────
+  // ── Build per-location stats (normalize Left/Right → In/Out) ─────────────
   const locStats: Record<string, CellStat> = {};
   let totalPitches = 0, totalSwings = 0, ballPitches = 0, ballSwings = 0, inPlayCount = 0;
 
@@ -372,7 +372,7 @@ export function BatterHistoryModal({
     if (p.pitchZone === 'Ball') { ballPitches++; if (isSwing) ballSwings++; }
   }
 
-  // ── Quick-read (strike zone only, min 2 pitches) ──────────────────────────
+  // ── Quick-read (strike zone only, min 2 pitches) ─────────────────────────
   const rankedZones = Object.keys(ZONE_NAMES)
     .map(z => {
       const s = locStats[z] ?? { total: 0, swings: 0, contacts: 0, inPlay: 0, types: {}, typeSwings: {}, typeMisses: {}, typeInPlay: {}, typeResults: {}, results: {} };
@@ -390,13 +390,13 @@ export function BatterHistoryModal({
 
   const zonesWithData = rankedZones.filter(z => z.swingPct >= 0);
 
-  // ── Pitch Here ─────────────────────────────────────────────────────────────
+  // ── Pitch Here ──────────────────────────────────────────────────────────────────────
   // Best whiff rate (misses / total pitches). Min 2 pitches.
   const pitchHereZone = [...zonesWithData]
     .filter(z => z.whiffRate >= 0)
     .sort((a, b) => b.whiffRate - a.whiffRate)[0] ?? null;
 
-  // ── K-Zone: "What PITCH TYPE gets him out?" ────────────────────────────────
+  // ── K-Zone: "What PITCH TYPE gets him out?" ───────────────────────────────
   // Aggregate whiff counts by pitch type across ALL zones — this is a different
   // dimension from Pitch Here (which answers WHERE), so the two can never clash.
   const kPitchWhiffs: Record<string, number> = {};
@@ -418,7 +418,7 @@ export function BatterHistoryModal({
         .sort((a, b) => (b[1].typeMisses?.[kPitchTop[0]] ?? 0) - (a[1].typeMisses?.[kPitchTop[0]] ?? 0))[0]?.[0]
     : null;
 
-  // ── Danger Zone ─────────────────────────────────────────────────────────────
+  // ── Danger Zone ──────────────────────────────────────────────────────────────────────
   // Highest contact rate. Prefer a DIFFERENT zone than Pitch Here — only fall
   // back to the same zone if no other zone has contact data.
   const dangerCandidates = [...zonesWithData]
@@ -432,7 +432,7 @@ export function BatterHistoryModal({
   // Takes = lowest swing% (kept for internal reference; not shown as its own card)
   const takesZone = [...zonesWithData].sort((a, b) => a.swingPct - b.swingPct)[0];
 
-  // ── Ball-zone directional chase ───────────────────────────────────────────
+  // ── Ball-zone directional chase ────────────────────────────────
   type Dir = 'High' | 'Low' | 'In' | 'Out';
   // Ball-zone labels are recorded batter-relative:
   //   B-In-Hi = inside-high to THIS batter (regardless of hand).
@@ -496,7 +496,7 @@ export function BatterHistoryModal({
     }
   }
 
-  // ── 1st and 2nd pitch intel (group by at-bat, pick pitchNumber 1 & 2) ────────
+  // ── 1st and 2nd pitch intel (group by at-bat, pick pitchNumber 1 & 2) ─────────
   const _abMap = new Map<string, PitchRow[]>();
   for (const p of pitches) {
     const key = String(p.atBatNumber ?? '');
@@ -515,16 +515,16 @@ export function BatterHistoryModal({
   const chaseRate       = ballPitches  > 0 ? Math.round(ballSwings   / ballPitches  * 100) : 0;
   const inPlayPct       = totalPitches > 0 ? Math.round(inPlayCount  / totalPitches * 100) : 0;
 
-  // ── Spray hits ─────────────────────────────────────────────────────────────
+  // ── Spray hits ───────────────────────────────────────────────────────
   const hits = pitches.filter(p =>
     p.hitResult &&
     p.hitX !== '' && p.hitX !== undefined && !isNaN(Number(p.hitX)) &&
     p.hitY !== '' && p.hitY !== undefined && !isNaN(Number(p.hitY))
   );
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
+    <div className="fixed inset-0 h-dvh z-50 bg-slate-950 flex flex-col">
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
@@ -628,7 +628,7 @@ export function BatterHistoryModal({
                             const isStrike = row >= 1 && row <= 3 && col >= 1 && col <= 3;
                             const key = cellLocKey(row, col, gridHand);
                             const s   = key ? (locStats[key] ?? { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{}, typeInPlay:{} }) : { total:0, swings:0, contacts:0, inPlay:0, types:{}, typeSwings:{}, typeMisses:{}, typeInPlay:{} };
-                            // ── Swing / Take / In-Play heat map ──────────────
+                            // ── Swing / Take / In-Play heat map ─────────────
                             // Confidence fades from 0.25 (1 pitch) → 0.85 (4+ pitches)
                             const confidence = s.total === 0 ? 0
                               : s.total === 1 ? 0.28
