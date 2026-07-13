@@ -41,7 +41,7 @@ const HEADER_GROUPS = [
   { label:'Meta',    cols:[34,36], bg:'#2a2a2a', fg:'#aaaaaa' },
 ];
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────────
 
 function getOrCreateSheet(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
@@ -101,7 +101,7 @@ function isEditRow(row, editIdx) {
   return v === true || v === 'true' || v === 'TRUE' || v === 1;
 }
 
-// ─── doGet ───────────────────────────────────────────────────────────────────
+// ─── doGet ─────────────────────────────────────────────────────────────────────
 
 /**
  * doGet — supports three actions. ALL actions require userId (or owner as a
@@ -156,7 +156,7 @@ function doGet(e) {
   }
 }
 
-// ─── getBatterHistory ─────────────────────────────────────────────────────────
+// ─── getBatterHistory ──────────────────────────────────────────────────────────────────────
 
 function getBatterHistory(batterName, batterNum, userId) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
@@ -185,10 +185,23 @@ function getBatterHistory(batterName, batterNum, userId) {
     });
   }
 
-  var nameLower = batterName.toLowerCase();
-  var pitches   = [];
+  // Normalize: lowercase + collapse/trim whitespace, so minor entry
+  // differences ("Smith", " Smith ", "Smith  ") never cause a false miss.
+  function normalizeName(s) {
+    return String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+  var nameLower = normalizeName(batterName);
   var sheetRows = 0; // count only rows owned by this user
 
+  // Two passes: gather every name-matching row first, then decide whether
+  // the jersey number should narrow it down. A guest/fill-in player very
+  // commonly wears a DIFFERENT number for a team than in prior appearances
+  // (borrowed jersey, no number assigned yet, etc.) — if we hard-require the
+  // number to match, his real history silently disappears even though the
+  // name is a perfect match. So: name is the primary, reliable identity
+  // signal; the number is only used to disambiguate when it's actually
+  // needed (i.e. there's evidence of two DIFFERENT people sharing this name).
+  var nameMatches = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
 
@@ -203,23 +216,44 @@ function getBatterHistory(batterName, batterNum, userId) {
     // Skip blank rows
     if (!row[nameIdx] && !row[numIdx]) continue;
 
-    var rowName = String(row[nameIdx] !== undefined ? row[nameIdx] : '').toLowerCase().trim();
-    var rowNum  = String(row[numIdx]  !== undefined ? row[numIdx]  : '').trim();
+    var rowName = normalizeName(row[nameIdx]);
+    var rowNum  = String(row[numIdx] !== undefined ? row[numIdx] : '').trim();
 
-    // Name must always match (case-insensitive).
-    // If a jersey number was also provided, it must also match — so a #13 on
-    // a different team never bleeds into a same-named batter's history, and
-    // a different batter wearing the same number never inflates counts.
     if (!nameLower || rowName !== nameLower) continue;
-    if (batterNum && rowNum !== batterNum) continue;
+    nameMatches.push({ row: row, rowNum: rowNum });
+  }
 
+  // Only treat this name as "ambiguous" (multiple real people sharing it)
+  // if we actually see more than one DISTINCT jersey number recorded for it.
+  // If every row under this name shares one number, or there's no number
+  // variation at all, there's no evidence of a collision — include everyone.
+  var distinctNums = {};
+  for (var m = 0; m < nameMatches.length; m++) {
+    if (nameMatches[m].rowNum) distinctNums[nameMatches[m].rowNum] = true;
+  }
+  var isAmbiguousName = batterNum && Object.keys(distinctNums).length > 1;
+
+  var matchedRows = nameMatches
+    .filter(function(m) { return !isAmbiguousName || m.rowNum === batterNum; })
+    .map(function(m) { return m.row; });
+
+  // Safety net: if narrowing by number produced nothing (e.g. this really is
+  // the same guest player, just recorded with a different number every time),
+  // fall back to every name match rather than returning an empty history.
+  if (matchedRows.length === 0 && nameMatches.length > 0) {
+    matchedRows = nameMatches.map(function(m) { return m.row; });
+  }
+
+  var pitches = [];
+  for (var j = 0; j < matchedRows.length; j++) {
+    var mRow = matchedRows[j];
     // Build a plain object with camelCase keys
     var obj = {};
     for (var k = 0; k < COLUMNS.length; k++) {
       var colKey = COLUMNS[k];
       var idx    = hmap[colKey];
       if (idx === undefined) { obj[colKey] = ''; continue; }
-      var cell   = row[idx];
+      var cell   = mRow[idx];
       if (cell instanceof Date) {
         obj[colKey] = Utilities.formatDate(cell, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'");
       } else {
