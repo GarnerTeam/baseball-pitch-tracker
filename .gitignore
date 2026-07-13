@@ -41,3 +41,15 @@ next-env.d.ts
 
 # stray sandbox workspace dirs (should never be part of this repo)
 /magica/
+
+# sandbox/dev-container environment files — never part of the app
+.bash_logout
+.bashrc
+.profile
+.gitconfig
+.sudo_as_admin_successful
+.vercel-deploy
+.cache/
+.config/
+.npm/
+.vnc/
