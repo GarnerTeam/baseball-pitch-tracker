@@ -33,3 +33,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .agent-browser/
+
+# backup / scratch files — never commit these
+*.bak
+*.orig
+*.tmp
+
+# stray sandbox workspace dirs (should never be part of this repo)
+/magica/
