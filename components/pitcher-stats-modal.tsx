@@ -25,7 +25,7 @@ export function PitcherStatsModal({ pitcher, allAtBats, currentAtBat, onClose }:
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 h-dvh z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
