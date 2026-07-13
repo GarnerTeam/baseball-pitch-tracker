@@ -90,7 +90,7 @@ export default function App() {
     );
   }
 
-  if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} onViewPastGames={() => setShowPastGames(true)} />;
+  if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} onViewPastGames={() => setShowPastGames(true)} onResumeGame={actions.resumeGame} />;
   if (state.phase === 'hit-mode') {
     return (
       <div className="fixed inset-0 h-dvh bg-slate-950 z-50">

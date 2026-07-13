@@ -102,7 +102,8 @@ type GameAction =
   | { type: 'NEW_GAME' }
   | { type: 'UNDO_LAST_END' }
   | { type: 'REORDER_BATTERS'; fromIdx: number; toIdx: number }
-  | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> };
+  | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> }
+  | { type: 'RESUME_GAME'; state: GameState };
 
 function resetPendingPitch(state: GameState) {
   return {
@@ -679,6 +680,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_OUTS':
       return { ...state, outsCount: action.count };
 
+    case 'RESUME_GAME':
+      return { ...action.state, sheetsWebhookUrl: state.sheetsWebhookUrl || action.state.sheetsWebhookUrl };
+
     default:
       return state;
   }
@@ -810,6 +814,7 @@ export function useGame() {
         dispatch({ type: 'REORDER_BATTERS', fromIdx, toIdx } as any), []),
       editPitch: useCallback((atBatId: string, pitchId: string, updates: Partial<PitchRecord>) =>
         dispatch({ type: 'EDIT_PITCH', atBatId, pitchId, updates } as any), []),
+      resumeGame: useCallback((state: GameState) => dispatch({ type: 'RESUME_GAME', state } as any), []),
     },
   };
 }
