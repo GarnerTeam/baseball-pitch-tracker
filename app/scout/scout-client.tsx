@@ -11,7 +11,7 @@ import {
   reconstructGame, buildFakeGameState,
 } from '@/lib/game-reconstruct';
 
-// ── Stats helpers (for the stats tab — unchanged) ─────────────────────────────
+// ── Stats helpers (for the stats tab — unchanged) ────────────────────────────────────
 const PT_COLOR: Record<string, string> = { FB: '#ef4444', CB: '#22c55e', SL: '#8b5cf6', CH: '#f97316' };
 const OUTCOME_COLOR: Record<string, string> = {
   'called-strike': '#ef4444', 'swinging-strike': '#ef4444', strikeout: '#ef4444',
@@ -40,7 +40,7 @@ function abResultColor(ab: ScoutAtBat) {
   return OUTCOME_COLOR[ab.finalOutcome] ?? '#94a3b8';
 }
 
-// ── Swipe hook ────────────────────────────────────────────────────────────────
+// ── Swipe hook ───────────────────────────────────────────────────────────────────
 function useSwipe(onLeft: () => void, onRight: () => void) {
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
@@ -65,7 +65,7 @@ const URL_KEY = 'scout-webhook-url';
 const OWNER_KEY = 'scout-owner-id';
 const NOOP = () => {};
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 export function ScoutClient() {
   const searchParams = useSearchParams();
   const DEFAULT_URL = process.env.NEXT_PUBLIC_SCOUT_WEBHOOK_URL ?? '';
@@ -148,10 +148,10 @@ export function ScoutClient() {
     () => setStatsPitcherIdx(i => Math.max(i - 1, 0)),
   );
 
-  // ── URL / owner setup ─────────────────────────────────────────────────────
+  // ── URL / owner setup ───────────────────────────────────────────────
   if (!webhookUrl || !ownerId) {
     return (
-      <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-5 p-8">
+      <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-5 p-8">
         <span className="text-6xl">⚾</span>
         <p className="text-2xl font-bold">Scout View</p>
         <p className="text-slate-400 text-center">Ask your coach for the Scout link — it carries everything needed to load their game data.</p>
@@ -176,11 +176,11 @@ export function ScoutClient() {
   }
 
   if (loading && !game) return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-400 flex items-center justify-center text-xl">Loading…</div>
+    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-400 flex items-center justify-center text-xl">Loading…</div>
   );
 
   if (fetchError && !game) return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-4 p-8">
+    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-4 p-8">
       <p className="text-red-400 text-lg font-semibold">Failed to load data</p>
       <p className="text-slate-500 text-sm text-center">{fetchError}</p>
       <p className="text-slate-600 text-xs text-center">Make sure the Apps Script has been updated with the new doGet() and redeployed.</p>
@@ -190,7 +190,7 @@ export function ScoutClient() {
   );
 
   if (!game || game.allRows.length === 0) return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-4 p-8">
+    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-4 p-8">
       <span className="text-5xl">⚾</span>
       <p className="text-xl font-bold text-slate-300">No game data yet</p>
       <p className="text-slate-500 text-center">Waiting for pitches to sync from the recording device.</p>
@@ -235,7 +235,7 @@ export function ScoutClient() {
   for (const p of pitcherRows) { const o = String(p.outcome || '?'); outcomeCounts[o] = (outcomeCounts[o] ?? 0) + 1; }
 
   return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col">
+    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col">
 
       {/* Header */}
       <div className="flex-shrink-0 bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between">

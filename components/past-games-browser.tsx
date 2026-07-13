@@ -74,7 +74,7 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-950 text-slate-100 flex flex-col z-50">
+    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col z-50">
       {/* Header */}
       <div className="flex-shrink-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center gap-3">
         <button

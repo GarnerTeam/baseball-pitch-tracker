@@ -28,6 +28,11 @@ export const viewport: Viewport = {
   maximumScale: 5,   // allow up to 5× pinch-to-zoom
   userScalable: true,
   themeColor: '#020617',
+  // Lets the app draw under the notch/home-indicator safe areas so we can
+  // pad them ourselves — combined with the `h-dvh` fix on the app shell,
+  // this keeps controls reachable both in standalone (home-screen) mode
+  // and inside a regular mobile browser's UI chrome (address bar, nav bar).
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
