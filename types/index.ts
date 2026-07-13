@@ -73,6 +73,13 @@ export interface PitchRecord {
   homeTeam?: string;
   visitingTeam?: string;
   isEdit?: boolean;   // true when this pitch was edited post-recording and needs a sheet row update
+  /** Stable identity from a Saved Roster (see lib/roster.ts) — set only when
+   *  the batter was loaded from (or saved to) a roster, rather than typed in
+   *  fresh for this game. When present, batter-history lookups match on this
+   *  ID exclusively instead of name/number, which is what correctly tells
+   *  apart siblings/same-name players and survives a guest player wearing a
+   *  different jersey number in different games. */
+  rosterPlayerId?: string;
 }
 
 export interface AtBat {
@@ -95,6 +102,22 @@ export interface Player {
   number: string;
   hand?: 'L' | 'R' | null;
 }
+
+/**
+ * A player saved to a reusable roster (see lib/roster.ts), keyed by team
+ * name under the coach's account. `id` is permanent once created — reusing
+ * a roster across multiple games this season always assigns the SAME id to
+ * the same real player, regardless of what jersey number he wears that day
+ * or minor name-entry differences. IDs are prefixed "roster-" so the app can
+ * tell a roster-backed lineup slot apart from one typed in ad hoc.
+ */
+export interface RosterPlayer {
+  id: string;
+  name: string;
+  number: string;
+  hand: 'L' | 'R' | null;
+}
+
 
 export interface PendingPitch {
   pitchType: PitchType | null;

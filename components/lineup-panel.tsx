@@ -7,6 +7,8 @@ import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
 import { BatterFigureIcon } from '@/components/strike-zone';
 import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
+import { fetchRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
+import { RosterPlayer } from '@/types';
 
 interface SyncStatus {
   ok: boolean;
@@ -31,6 +33,9 @@ interface LineupPanelProps {
   onRemoveBatter: (idx: number) => void;
   onSetBatterAt: (idx: number, player: Player) => void;
   onReorderBatter: (fromIdx: number, toIdx: number) => void;
+  /** Bulk-replaces the batting order with a Saved Roster. Omitted in
+   *  read-only contexts (Scout / Past Games) where rosters don't apply. */
+  onLoadRoster?: (players: Player[]) => void;
   onEditPitch: (atBatId: string, pitchId: string, updates: Partial<PitchRecord>) => void;
   onUndoLastEnd: () => void;
   onSetWebhookUrl: (url: string) => void;
@@ -110,7 +115,7 @@ function getResultColor(ab: AtBat): string {
   return 'text-slate-400';
 }
 
-// ── Pitch edit form ────────────────────────────────────────────────────────────
+// ── Pitch edit form ─────────────────────────────────────────────────────────────────────
 const EDIT_PITCH_TYPES: PitchType[] = ['FB', 'CB', 'SL', 'CH'];
 const EDIT_OUTCOMES: { value: PitchOutcome; label: string; swing: boolean }[] = [
   { value: 'ball',            label: 'Ball',      swing: false },
@@ -187,7 +192,7 @@ function PitchEditInlineForm({
   );
 }
 
-// ── Field geometry constants (matches analytics-screen) ───────────────────────
+// ── Field geometry constants (matches analytics-screen) ───────────────────────────────────
 const SW=400, SH=390, SHX=200, SHY=365;
 const SR_FENCE=270, SR_WARN=220;
 const SLFPX=9, SLFPY=174, SRFPX=391, SRFPY=174;
@@ -297,7 +302,7 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
   );
 }
 
-// ── Scout Share Modal ─────────────────────────────────────────────────────────
+// ── Scout Share Modal ─────────────────────────────────────────────────────────────
 function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose: () => void }) {
   // The Scout link now carries the owner's Clerk user id — required so the
   // (unauthenticated) Scout page can be scoped to just this coach's data,
@@ -355,7 +360,7 @@ function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose:
   );
 }
 
-// ── Sheets URL Panel ──────────────────────────────────────────────────────────
+// ── Sheets URL Panel ───────────────────────────────────────────────────────────────────
 function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
   webhookUrl: string;
   syncQueue: number;
@@ -495,6 +500,7 @@ export function LineupPanel({
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onReorderBatter, onEditPitch,
   onUndoLastEnd, onSetWebhookUrl, syncStatus,
+  onLoadRoster,
 }: LineupPanelProps) {
   const {
     pitcher, lineup, currentBatterIndex, allAtBats,
@@ -502,7 +508,7 @@ export function LineupPanel({
   } = state;
   const pitcherHistory = state.pitcherHistory ?? [];
 
-  // ── Pitcher state ──────────────────────────────────────────────────────────
+  // ── Pitcher state ────────────────────────────────────────────────────────
   const [pitcherMode, setPitcherMode] = useState<'idle' | 'new' | 'edit'>(
     () => pitcher.name.trim() ? 'idle' : 'new'
   );
@@ -510,27 +516,89 @@ export function LineupPanel({
   const [pNum, setPNum]   = useState('');
   const [pHand, setPHand] = useState<'R' | 'L' | null>(null);
 
-  // ── Pitcher stats popup state ─────────────────────────────────────────────
+  // ── Pitcher stats popup state ────────────────────────────────────────────────────
   const [statsPitcher, setStatsPitcher] = useState<Player | null>(null);
 
-  // ── Slot state ────────────────────────────────────────────────────────────
+  // ── Slot state ─────────────────────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState<{ idx: number; view: 'details' | 'edit' | 'edit-existing' } | null>(null);
   const [historyPlayer, setHistoryPlayer] = useState<{
     name: string;
     number: string;
     currentGameId: string;
     currentGamePitches: PitchRowLite[];
+    rosterId?: string;
   } | null>(null);
   const [slotForm, setSlotForm] = useState({ name: '', num: '' });
   const [extraSlots, setExtraSlots] = useState(0);
 
-  // ── Drag-to-reorder state ─────────────────────────────────────────────────
+  // ── Saved Roster state ────────────────────────────────────────────────────
+  const [rosterMenuOpen, setRosterMenuOpen] = useState(false);
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const opposingTeam = (state.visitingTeam ?? '').trim();
+
+  async function handleLoadRoster() {
+    if (!onLoadRoster || !state.sheetsWebhookUrl || !opposingTeam) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    try {
+      const players = await fetchRoster(state.sheetsWebhookUrl, opposingTeam, ownerId);
+      if (players.length === 0) {
+        setRosterError(`No saved roster found for "${opposingTeam}" yet.`);
+        return;
+      }
+      onLoadRoster(players.map((p: RosterPlayer) => ({ id: p.id, name: p.name, number: p.number, hand: p.hand })));
+      setRosterMenuOpen(false);
+    } catch (e) {
+      setRosterError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRosterBusy(false);
+    }
+  }
+
+  async function handleSaveRoster() {
+    if (!state.sheetsWebhookUrl || !opposingTeam) return;
+    setRosterBusy(true);
+    setRosterError(null);
+    try {
+      const named = lineup
+        .map((p, idx) => ({ p, idx }))
+        .filter(({ p }) => p && p.name.trim());
+
+      if (named.length === 0) {
+        setRosterError('Add at least one named batter before saving a roster.');
+        return;
+      }
+
+      // Assign each batter a permanent roster id if they don't already have
+      // one (re-saving an existing roster keeps everyone's identity stable).
+      const rosterPlayers: RosterPlayer[] = [];
+      const idUpdates: { idx: number; player: Player }[] = [];
+      for (const { p, idx } of named) {
+        const stableId = isRosterId(p!.id) ? p!.id : newRosterId();
+        if (stableId !== p!.id) idUpdates.push({ idx, player: { ...p!, id: stableId } });
+        rosterPlayers.push({ id: stableId, name: p!.name.trim(), number: p!.number.trim(), hand: p!.hand ?? null });
+      }
+
+      await saveRoster(state.sheetsWebhookUrl, opposingTeam, rosterPlayers);
+      // Re-tag this game's lineup with the now-stable ids so any further
+      // pitches recorded to these batters carry the same roster identity.
+      idUpdates.forEach(u => onSetBatterAt(u.idx, u.player));
+      setRosterMenuOpen(false);
+    } catch (e) {
+      setRosterError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRosterBusy(false);
+    }
+  }
+
+  // ── Drag-to-reorder state ───────────────────────────────────────────────────
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const dragRef = useRef<number | null>(null);
   const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // ── Pitch edit state ──────────────────────────────────────────────────────
+  // ── Pitch edit state ───────────────────────────────────────────────────────
   const [editingPitch, setEditingPitch] = useState<{ atBatId: string; pitchId: string } | null>(null);
   const [pitchEditForm, setPitchEditForm] = useState<PitchEditFormState>({
     pitchType: 'FB', outcome: 'ball', swing: false,
@@ -539,7 +607,7 @@ export function LineupPanel({
   const MAX_SLOTS = 16;
   const visibleSlots = Math.max(9, lineup.length, Math.min(9 + extraSlots, MAX_SLOTS));
 
-  // ── Pitcher helpers ────────────────────────────────────────────────────────
+  // ── Pitcher helpers ──────────────────────────────────────────────────────
   function getPitchCount(name: string, number: string): number {
     const historicalPitches = allAtBats
       .flatMap(ab => ab.pitches)
@@ -570,8 +638,8 @@ export function LineupPanel({
     setPitcherMode('idle');
   }
 
-  // ── Batter helpers ─────────────────────────────────────────────────────────
-  function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
+  // ── Batter helpers ──────────────────────────────────────────────────────
+function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
     const subHasOccurred = playerId
       ? allAtBats.some(ab => ab.playerId && ab.playerId !== playerId && ab.batterIndex === batterIdx)
       : false;
@@ -651,7 +719,7 @@ export function LineupPanel({
     setSlotForm({ name: '', num: '' });
   }
 
-  // ── Drag helpers ──────────────────────────────────────────────────────────
+  // ── Drag helpers ───────────────────────────────────────────────────────
   function handleDragHandleTouchStart(e: React.TouchEvent, idx: number) {
     e.stopPropagation();
     dragRef.current = idx;
@@ -689,7 +757,7 @@ export function LineupPanel({
     <>
     <div className="flex flex-col h-full overflow-y-scroll bg-slate-950 text-slate-100" style={{ WebkitOverflowScrolling: "touch" }}>
 
-      {/* ── At-Bat Controls ─────────────────────────────────────────────── */}
+      {/* ── At-Bat Controls ────────────────────────────────── */}
       {!readOnly && (
       <div className="px-4 pt-4 pb-2">
         <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">At-Bat Controls</p>
@@ -709,7 +777,7 @@ export function LineupPanel({
       </div>
       )}
 
-      {/* ── Pitcher ─────────────────────────────────────────────────────── */}
+      {/* ── Pitcher ────────────────────────────────────────────── */}
       <div className="px-4 pt-1 pb-3">
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider">Pitchers</p>
@@ -827,12 +895,51 @@ export function LineupPanel({
 
       {pitcherSwipeSlot}
 
-      {/* ── Batting Order ────────────────────────────────────────────────── */}
+      {/* ── Batting Order ────────────────────────────────── */}
       <div className="px-4 pt-1 pb-4">
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider">Batting Order</p>
           <span className="text-slate-600 text-[18px]">{lineup.filter(p => !!p).length} batters</span>
         </div>
+
+        {/* ── Saved Roster: reuse a lineup across every game vs. the same team ── */}
+        {!readOnly && onLoadRoster && state.sheetsWebhookUrl && opposingTeam && (
+          <div className="mb-2">
+            <button
+              onClick={() => setRosterMenuOpen(v => !v)}
+              className="w-full h-9 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[15px] font-medium flex items-center justify-center gap-2"
+            >
+              <span className="text-[16px]">📋</span> Saved Roster — {opposingTeam}
+            </button>
+            {rosterMenuOpen && (
+              <div className="mt-1.5 p-2.5 rounded-xl bg-slate-900 border border-slate-700 space-y-2">
+                <p className="text-slate-500 text-[13px]">
+                  Load this team's known batters, or save the current lineup so it's ready next time you face them.
+                </p>
+                {rosterError && <p className="text-red-400 text-[13px]">{rosterError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleLoadRoster}
+                    disabled={rosterBusy}
+                    className="flex-1 h-9 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-[14px] font-semibold"
+                  >
+                    {rosterBusy ? 'Working…' : 'Load Roster'}
+                  </button>
+                  <button
+                    onClick={handleSaveRoster}
+                    disabled={rosterBusy}
+                    className="flex-1 h-9 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-[14px] font-semibold"
+                  >
+                    {rosterBusy ? 'Working…' : 'Save Current as Roster'}
+                  </button>
+                </div>
+                <p className="text-slate-600 text-[12px]">
+                  Tip: if two players share a last name (e.g. brothers), enter each one's full first name — once saved, the app tracks them by a permanent ID, not by name, so it will never mix them up again even if a number changes.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         {!readOnly && dragFrom !== null && (
           <p className="text-blue-400 text-[15px] text-center mb-1.5 animate-pulse">
             Drag to reorder — slot {(dragFrom ?? 0) + 1} → slot {(dragOver ?? dragFrom ?? 0) + 1}
@@ -1031,6 +1138,7 @@ export function LineupPanel({
                               number:             player!.number,
                               currentGameId:      gameId,
                               currentGamePitches: bPitches,
+                              rosterId:           isRosterId(player!.id) ? player!.id : undefined,
                             });
                           }}
                           className="w-full py-2.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-[18px] font-semibold flex items-center justify-center gap-2"
@@ -1143,7 +1251,7 @@ export function LineupPanel({
 
     </div>
 
-      {/* ── Batter History Modal ─────────────────────────────────────────── */}
+      {/* ── Batter History Modal ────────────────────────────── */}
       {historyPlayer && (
         <BatterHistoryModal
           playerName={historyPlayer.name}
@@ -1151,12 +1259,13 @@ export function LineupPanel({
           webhookUrl={state.sheetsWebhookUrl}
           currentGameId={historyPlayer.currentGameId}
           currentGamePitches={historyPlayer.currentGamePitches}
+          playerRosterId={historyPlayer.rosterId}
           ownerId={ownerId}
           onClose={() => setHistoryPlayer(null)}
         />
       )}
 
-      {/* ── Pitcher Stats Modal ──────────────────────────────────────────── */}
+      {/* ── Pitcher Stats Modal ──────────────────────────────── */}
       {statsPitcher && (
         <PitcherStatsModal
           pitcher={statsPitcher}

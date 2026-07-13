@@ -274,6 +274,11 @@ interface Props {
    *  Inside the logged-in main app this is omitted; the API derives the
    *  owner from the Clerk session instead. */
   ownerId?: string;
+  /** Stable Saved Roster id (see lib/roster.ts) for this batter, if he was
+   *  loaded from (or saved to) a roster. When present, history is matched
+   *  on this id exclusively — the only fully reliable way to tell apart
+   *  siblings/same-name players or a guest wearing a different number. */
+  playerRosterId?: string;
   onClose: () => void;
 }
 
@@ -281,6 +286,7 @@ interface Props {
 export function BatterHistoryModal({
   playerName, playerNumber, webhookUrl,
   currentGameId, currentGamePitches = [], ownerId,
+  playerRosterId,
   onClose,
 }: Props) {
   const [loading, setLoading] = useState(true);
@@ -302,6 +308,9 @@ export function BatterHistoryModal({
     }
     const qs = new URLSearchParams({ url: webhookUrl, batter: playerName, num: playerNumber });
     if (ownerId) qs.set('owner', ownerId);
+    // Roster id, when available, is the reliable identity signal — the
+    // backend matches on it exclusively rather than name/number guessing.
+    if (playerRosterId) qs.set('playerId', playerRosterId);
     fetch(`/api/sheets/history?${qs}`)
       .then(r => r.json())
       .then(d => {
@@ -315,7 +324,7 @@ export function BatterHistoryModal({
       })
       .catch(e => setFetchError(String(e.message ?? e)))
       .finally(() => setLoading(false));
-  }, [playerName, playerNumber, webhookUrl, ownerId]);
+  }, [playerName, playerNumber, webhookUrl, ownerId, playerRosterId]);
 
   // ── Predominant hand ───────────────────────────────────────────────────
   const handCounts = { R: 0, L: 0 };
@@ -515,7 +524,7 @@ export function BatterHistoryModal({
   const chaseRate       = ballPitches  > 0 ? Math.round(ballSwings   / ballPitches  * 100) : 0;
   const inPlayPct       = totalPitches > 0 ? Math.round(inPlayCount  / totalPitches * 100) : 0;
 
-  // ── Spray hits ───────────────────────────────────────────────────────
+  // ── Spray hits ────────────────────────────────────────────────────
   const hits = pitches.filter(p =>
     p.hitResult &&
     p.hitX !== '' && p.hitX !== undefined && !isNaN(Number(p.hitX)) &&

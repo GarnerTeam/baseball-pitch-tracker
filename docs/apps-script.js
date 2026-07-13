@@ -17,7 +17,7 @@ const COLUMNS = [
   'action','outcome','ballsAfter','strikesAfter',
   'hitType','hitTypeName','hitResult','hitResultName','hitZone','hitX','hitY',
   'runner1B','runner2B','runner3B','outsCount','baseState',
-  'id','isEdit','userId',
+  'id','isEdit','userId','rosterPlayerId',
 ];
 
 const HEADERS = [
@@ -28,7 +28,7 @@ const HEADERS = [
   'Action','Result','Balls After','Strikes After',
   'Hit Type','Hit Type Name','Hit Result','Hit Result Name','Hit Zone','Hit X','Hit Y',
   'Runner 1B','Runner 2B','Runner 3B','Outs','Base State',
-  'Row ID','Is Edit','User ID',
+  'Row ID','Is Edit','User ID','Roster Player ID',
 ];
 
 const HEADER_GROUPS = [
@@ -38,7 +38,7 @@ const HEADER_GROUPS = [
   { label:'Pitch',   cols:[12,18], bg:'#5c3d00', fg:'#ffffff' },
   { label:'Outcome', cols:[19,28], bg:'#5c1a1a', fg:'#ffffff' },
   { label:'Base',    cols:[29,33], bg:'#1a4a3a', fg:'#ffffff' },
-  { label:'Meta',    cols:[34,36], bg:'#2a2a2a', fg:'#aaaaaa' },
+  { label:'Meta',    cols:[34,37], bg:'#2a2a2a', fg:'#aaaaaa' },
 ];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────────
@@ -104,13 +104,17 @@ function isEditRow(row, editIdx) {
 // ─── doGet ─────────────────────────────────────────────────────────────────────
 
 /**
- * doGet — supports three actions. ALL actions require userId (or owner as a
+ * doGet — supports four actions. ALL actions require userId (or owner as a
  * synonym) — every read is scoped to that one user's rows only, since this
  * sheet now holds data for multiple independent coaches/subscribers.
  *
- *   action=history  userId=<id>  batter=<name>  num=<jersey>
+ *   action=history  userId=<id>  [batter=<name>] [num=<jersey>] [playerId=<rosterId>]
  *     Returns all non-edit pitches for that batter across all of THIS
- *     user's games. Matches by name (case-insensitive) OR number.
+ *     user's games. If playerId is provided (a Saved Roster id), matches on
+ *     it EXCLUSIVELY — the reliable way to tell apart siblings/same-name
+ *     players and to survive a guest wearing a different jersey number in
+ *     different games. Otherwise falls back to name (+ number when needed
+ *     to disambiguate) matching.
  *
  *   action=scout  userId=<id>  [gameId=<id>]
  *     Returns all non-edit pitches for the latest game (or a specific gameId)
@@ -121,6 +125,11 @@ function isEditRow(row, editIdx) {
  *     Returns a lightweight list of THIS user's distinct completed games
  *     (gameId, teams, first/last timestamp, pitch count) — powers the
  *     "Past Games" browser. Does NOT return per-pitch data.
+ *
+ *   action=roster  userId=<id>  team=<teamName>
+ *     Returns THIS user's Saved Roster for an opposing team (id, name,
+ *     number, hand per player) — powers reusing a lineup across every game
+ *     against the same team this season.
  */
 function doGet(e) {
   try {
@@ -135,10 +144,11 @@ function doGet(e) {
     if (action === 'history') {
       var batterName = (params.batter || '').trim();
       var batterNum  = (params.num   || '').trim();
-      if (!batterName && !batterNum) {
+      var playerId   = (params.playerId || '').trim();
+      if (!batterName && !batterNum && !playerId) {
         return jsonOut({ error: 'Provide batter name or number', pitches: [] });
       }
-      return getBatterHistory(batterName, batterNum, userId);
+      return getBatterHistory(batterName, batterNum, userId, playerId);
     }
 
     if (action === 'scout') {
@@ -147,6 +157,14 @@ function doGet(e) {
 
     if (action === 'games') {
       return getGamesList(userId);
+    }
+
+    if (action === 'roster') {
+      var teamName = (params.team || '').trim();
+      if (!teamName) {
+        return jsonOut({ error: 'Provide team parameter', players: [] });
+      }
+      return getRoster(teamName, userId);
     }
 
     return jsonOut({ error: 'Unknown action: ' + action });
@@ -158,7 +176,7 @@ function doGet(e) {
 
 // ─── getBatterHistory ──────────────────────────────────────────────────────────────────────
 
-function getBatterHistory(batterName, batterNum, userId) {
+function getBatterHistory(batterName, batterNum, userId, playerId) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Pitches');
   if (!sheet) {
@@ -173,10 +191,11 @@ function getBatterHistory(batterName, batterNum, userId) {
   var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
   var hmap     = buildHeaderMap(rawHeaders);
 
-  var nameIdx   = hmap['batterName']  !== undefined ? hmap['batterName']  : hmap['Batter Name'];
-  var numIdx    = hmap['batterNumber'] !== undefined ? hmap['batterNumber'] : hmap['Batter #'];
-  var editIdx   = hmap['isEdit']      !== undefined ? hmap['isEdit']      : hmap['Is Edit'];
-  var userIdIdx = hmap['userId']      !== undefined ? hmap['userId']      : hmap['User ID'];
+  var nameIdx     = hmap['batterName']     !== undefined ? hmap['batterName']     : hmap['Batter Name'];
+  var numIdx      = hmap['batterNumber']   !== undefined ? hmap['batterNumber']   : hmap['Batter #'];
+  var editIdx     = hmap['isEdit']         !== undefined ? hmap['isEdit']         : hmap['Is Edit'];
+  var userIdIdx   = hmap['userId']         !== undefined ? hmap['userId']         : hmap['User ID'];
+  var rosterIdIdx = hmap['rosterPlayerId'] !== undefined ? hmap['rosterPlayerId'] : hmap['Roster Player ID'];
 
   if (nameIdx === undefined && numIdx === undefined) {
     return jsonOut({
@@ -192,6 +211,46 @@ function getBatterHistory(batterName, batterNum, userId) {
   }
   var nameLower = normalizeName(batterName);
   var sheetRows = 0; // count only rows owned by this user
+
+  // ── Fast path: exact Saved Roster ID match ────────────────────────
+  // If the caller has a roster id for this batter, it is a reliable,
+  // permanent identity signal — completely bypass name/number guessing.
+  // This is what correctly separates siblings/same-name players and
+  // survives a guest batter wearing a different jersey number in different
+  // games, since the id never changes once the roster entry is created.
+  if (playerId && rosterIdIdx !== undefined) {
+    var idMatches = [];
+    for (var ri = 1; ri < data.length; ri++) {
+      var idRow = data[ri];
+      if (userIdIdx === undefined || String(idRow[userIdIdx] || '').trim() !== userId) continue;
+      sheetRows++;
+      if (isEditRow(idRow, editIdx)) continue;
+      if (String(idRow[rosterIdIdx] || '').trim() !== playerId) continue;
+      idMatches.push(idRow);
+    }
+
+    var idPitches = idMatches.map(function(row) {
+      var obj = {};
+      for (var k = 0; k < COLUMNS.length; k++) {
+        var colKey = COLUMNS[k];
+        var idx = hmap[colKey];
+        if (idx === undefined) { obj[colKey] = ''; continue; }
+        var cell = row[idx];
+        obj[colKey] = (cell instanceof Date)
+          ? Utilities.formatDate(cell, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'")
+          : (cell === null || cell === undefined) ? '' : cell;
+      }
+      return obj;
+    });
+
+    idPitches.sort(function(a, b) {
+      var abA = Number(a.atBatNumber) || 0, abB = Number(b.atBatNumber) || 0;
+      if (abA !== abB) return abA - abB;
+      return (Number(a.pitchNumber) || 0) - (Number(b.pitchNumber) || 0);
+    });
+
+    return jsonOut({ pitches: idPitches, count: idPitches.length, sheetRows: sheetRows });
+  }
 
   // Two passes: gather every name-matching row first, then decide whether
   // the jersey number should narrow it down. A guest/fill-in player very
@@ -280,6 +339,103 @@ function getBatterHistory(batterName, batterNum, userId) {
   });
 
   return jsonOut({ pitches: pitches, count: pitches.length, sheetRows: sheetRows });
+}
+
+// ─── ROSTERS: getOrCreate sheet + column layout ────────────────────────
+// Saved Rosters live in a separate "Rosters" tab so they never mix with the
+// per-pitch Pitches sheet. One row per (userId, playerId): the playerId is
+// permanent once created (see lib/roster.ts on the app side) — re-saving an
+// existing roster updates matching rows in place rather than duplicating.
+
+var ROSTER_COLUMNS = ['userId', 'teamName', 'playerId', 'name', 'number', 'hand', 'updatedAt'];
+var ROSTER_HEADERS = ['User ID', 'Team Name', 'Player ID', 'Name', 'Number', 'Hand', 'Updated At'];
+
+function getOrCreateRostersSheet(ss) {
+  var sheet = ss.getSheetByName('Rosters');
+  if (!sheet) {
+    sheet = ss.insertSheet('Rosters');
+    sheet.getRange(1, 1, 1, ROSTER_HEADERS.length).setValues([ROSTER_HEADERS]);
+    sheet.getRange(1, 1, 1, ROSTER_HEADERS.length)
+         .setBackground('#1a3a5c').setFontColor('#ffffff').setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, ROSTER_HEADERS.length);
+  }
+  return sheet;
+}
+
+// ─── getRoster ─────────────────────────────────────────────────────────────────────
+
+function getRoster(teamName, userId) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Rosters');
+  if (!sheet) return jsonOut({ players: [], count: 0 });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ players: [], count: 0 });
+
+  var lastCol = sheet.getLastColumn();
+  var data    = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var teamLower = String(teamName || '').toLowerCase().trim();
+
+  var players = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (String(row[0] || '').trim() !== userId) continue;               // userId
+    if (String(row[1] || '').toLowerCase().trim() !== teamLower) continue; // teamName
+    players.push({
+      id:     String(row[2] || ''), // playerId
+      name:   String(row[3] || ''),
+      number: String(row[4] || ''),
+      hand:   String(row[5] || '') || null,
+    });
+  }
+
+  return jsonOut({ players: players, count: players.length });
+}
+
+// ─── saveRosterPlayers ────────────────────────────────────────────────────────────
+// Upserts by (userId, playerId): updates the matching row in place if found,
+// otherwise appends a new one. `items` are pre-stamped by the /api/sheets/
+// roster route with { userId, teamName, playerId, name, number, hand }.
+
+function saveRosterPlayers(items) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateRostersSheet(ss);
+
+  var lastRow = sheet.getLastRow();
+  var data    = lastRow >= 2 ? sheet.getRange(1, 1, lastRow, ROSTER_COLUMNS.length).getValues() : [];
+  var now     = new Date().toISOString();
+
+  items.forEach(function(item) {
+    var uid = String(item.userId || '').trim();
+    var pid = String(item.playerId || '').trim();
+    if (!uid || !pid) return; // can't upsert without an identity key
+
+    var newRow = [
+      uid,
+      String(item.teamName || ''),
+      pid,
+      String(item.name || ''),
+      String(item.number || ''),
+      String(item.hand || ''),
+      now,
+    ];
+
+    var foundRow = -1;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][0] || '').trim() === uid && String(data[r][2] || '').trim() === pid) {
+        foundRow = r + 1; // 1-based sheet row
+        break;
+      }
+    }
+
+    if (foundRow > 0) {
+      sheet.getRange(foundRow, 1, 1, ROSTER_COLUMNS.length).setValues([newRow]);
+    } else {
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, ROSTER_COLUMNS.length).setValues([newRow]);
+      data.push(newRow); // keep in-memory copy in sync so dupes within the same batch upsert correctly
+    }
+  });
 }
 
 // ─── getGameScout ─────────────────────────────────────────────────────────────
@@ -443,13 +599,26 @@ function doPost(e) {
     Logger.log('Rows received: ' + rows.length);
     if (rows.length === 0) return ok({ count: 0, message: 'Empty array' });
 
+    // ── Roster saves are a completely different write target (the Rosters
+    //    tab, not Pitches) — split them off first and handle separately.
+    var rosterItems = rows.filter(function(r) { return r._kind === 'roster'; });
+    var pitchRows   = rows.filter(function(r) { return r._kind !== 'roster'; });
+
+    if (rosterItems.length > 0) {
+      saveRosterPlayers(rosterItems);
+    }
+
+    if (pitchRows.length === 0) {
+      return ok({ count: rows.length, newRows: 0, edits: 0, rosterSaved: rosterItems.length });
+    }
+
     var ss    = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = getOrCreateSheet(ss, 'Pitches');
     if (sheet.getLastRow() === 0) initSheet(sheet);
 
     // Split into new pitches and edits
-    var newRows = rows.filter(function(r) { return !r.isEdit; });
-    var edits   = rows.filter(function(r) { return  r.isEdit; });
+    var newRows = pitchRows.filter(function(r) { return !r.isEdit; });
+    var edits   = pitchRows.filter(function(r) { return  r.isEdit; });
 
     // ── Append new pitch rows ─────────────────────────────────────────────
     if (newRows.length > 0) {
@@ -498,7 +667,7 @@ function doPost(e) {
       }
     }
 
-    return ok({ count: rows.length, newRows: newRows.length, edits: edits.length });
+    return ok({ count: rows.length, newRows: newRows.length, edits: edits.length, rosterSaved: rosterItems.length });
 
   } catch (err) {
     Logger.log('CAUGHT ERROR: ' + err.toString());
