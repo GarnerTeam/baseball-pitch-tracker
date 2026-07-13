@@ -1,7 +1,7 @@
 'use client';
 import { PitchRecord } from '@/types';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────────
 
 /** Map ball-zone row/col + batter hand to a readable label (mirrors component logic). */
 function ballLocationLabel(row: number, col: number, hand?: 'L' | 'R' | null): string {
@@ -101,10 +101,11 @@ function flattenPitch(p: PitchRecord) {
     visitingTeam:    p.visitingTeam    ?? '',
     id:              p.id,
     isEdit:          p.isEdit          ?? false,
+    rosterPlayerId:  p.rosterPlayerId   ?? '',
   };
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────────
 export async function syncQueueToSheets(
   webhookUrl: string,
   queue: PitchRecord[]
@@ -129,7 +130,7 @@ export async function syncQueueToSheets(
 
 export const DEFAULT_WEBHOOK_URL = process.env.NEXT_PUBLIC_SHEETS_WEBHOOK_URL ?? '';
 
-// ── Game-state → PitchRow converter ──────────────────────────────────────────
+// ── Game-state → PitchRow converter ───────────────────────────────────
 
 /** Minimal shape matching BatterHistoryModal's PitchRow (all optional). */
 export interface PitchRowLite {

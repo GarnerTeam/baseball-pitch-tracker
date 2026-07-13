@@ -14,6 +14,9 @@ export async function GET(req: NextRequest) {
   const webhookUrl = searchParams.get('url');
   const batter = searchParams.get('batter') ?? '';
   const num = searchParams.get('num') ?? '';
+  // Saved Roster id — reliable identity signal that bypasses name/number
+  // matching entirely on the backend when present (see lib/roster.ts).
+  const playerId = searchParams.get('playerId') ?? '';
 
   if (!webhookUrl) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
@@ -29,6 +32,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const qs = new URLSearchParams({ action: 'history', batter, num, userId });
+    if (playerId) qs.set('playerId', playerId);
     // GET requests to Apps Script follow redirects normally
     const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
       method: 'GET',

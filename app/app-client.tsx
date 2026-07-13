@@ -107,7 +107,7 @@ export default function App() {
           <PitchScreen state={state} onSetPitchType={actions.setPitchType} onSetLocation={actions.setLocation} onSetSwing={actions.setSwing} onSetContact={actions.setContact} onRecordPitch={actions.recordPitch} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onUndoPitch={actions.undoPitch} onSetBatterHand={actions.setBatterHand} onToggleOverlay={actions.toggleOverlay} onSetOverlayFilter={actions.setOverlayFilter} onTabChange={actions.setTab} onSetBase={actions.setBase} onSetOuts={actions.setOuts} onHitByPitch={actions.hitByPitch} />
         )}
         {state.activeTab === 'lineup' && (
-          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onSetWebhookUrl={actions.setSheetsUrl} onReorderBatter={actions.reorderBatter} onEditPitch={actions.editPitch} />
+          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onSetWebhookUrl={actions.setSheetsUrl} onReorderBatter={actions.reorderBatter} onEditPitch={actions.editPitch} onLoadRoster={actions.loadRoster} />
         )}
         {state.activeTab === 'analytics' && <AnalyticsScreen state={state} />}
         {state.activeTab === 'log' && <GameLog state={state} />}

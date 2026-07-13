@@ -20,6 +20,7 @@ import {
   getAtBatResult,
 } from '@/lib/game-engine';
 import { syncQueueToSheets, DEFAULT_WEBHOOK_URL } from '@/lib/sheets';
+import { isRosterId } from '@/lib/roster';
 
 const STORAGE_KEY = 'baseball-pitch-tracker-v1';
 
@@ -102,7 +103,8 @@ type GameAction =
   | { type: 'NEW_GAME' }
   | { type: 'UNDO_LAST_END' }
   | { type: 'REORDER_BATTERS'; fromIdx: number; toIdx: number }
-  | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> };
+  | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> }
+  | { type: 'LOAD_ROSTER'; players: Player[] };
 
 function resetPendingPitch(state: GameState) {
   return {
@@ -256,6 +258,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         outsCount: state.outsCount,
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
+        rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
       };
 
       const complete = isAtBatComplete(outcome);
@@ -325,6 +328,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         outsCount: state.outsCount,
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
+        rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
       };
 
       const completedAB: AtBat = {
@@ -393,6 +397,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         outsCount: state.outsCount,
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
+        rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
       };
       const ended: AtBat = {
         ...state.currentAtBat,
@@ -679,6 +684,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_OUTS':
       return { ...state, outsCount: action.count };
 
+    case 'LOAD_ROSTER':
+      // Bulk-replace the batting order with a Saved Roster. Only meant to be
+      // used before/at the start of tracking that team's lineup — it does
+      // NOT touch pitcher, current at-bat, or any already-recorded pitches.
+      return { ...state, lineup: action.players.slice(0, 16) };
+
     default:
       return state;
   }
@@ -810,6 +821,7 @@ export function useGame() {
         dispatch({ type: 'REORDER_BATTERS', fromIdx, toIdx } as any), []),
       editPitch: useCallback((atBatId: string, pitchId: string, updates: Partial<PitchRecord>) =>
         dispatch({ type: 'EDIT_PITCH', atBatId, pitchId, updates } as any), []),
+      loadRoster: useCallback((players: Player[]) => dispatch({ type: 'LOAD_ROSTER', players } as any), []),
     },
   };
 }
