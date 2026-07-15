@@ -60,8 +60,12 @@ export default function App() {
       <div className="fixed inset-0 h-dvh h-app bg-slate-950 text-slate-100 flex flex-col">
         {/* Read-only banner — top padding cleared by env(safe-area-inset-top)
             so the Back button is never rendered under a mobile browser's
-            own (still-animating) chrome — see hooks/use-viewport-height.ts. */}
-        <div className="flex-shrink-0 bg-amber-950/60 border-b border-amber-800 px-4 pb-2 flex items-center gap-3" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+            own (still-animating) chrome — see hooks/use-viewport-height.ts.
+            The 3rem floor is a deliberate hard minimum: in standalone PWA
+            mode env(safe-area-inset-top) has been observed reporting 0 on
+            some iOS versions even though content genuinely draws under the
+            Dynamic Island/notch, so we never rely on env() alone. */}
+        <div className="flex-shrink-0 bg-amber-950/60 border-b border-amber-800 px-4 pb-2 flex items-center gap-3" style={{ paddingTop: 'max(3rem, env(safe-area-inset-top))' }}>
           <button
             onClick={() => setHistoryState(null)}
             className="text-amber-300 hover:text-amber-200 text-[15px] font-semibold flex-shrink-0"

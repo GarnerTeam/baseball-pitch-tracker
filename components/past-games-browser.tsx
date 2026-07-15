@@ -78,10 +78,15 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
       {/* Header — top padding cleared by env(safe-area-inset-top) so the
           Back button is never rendered under a mobile browser's own
           (still-animating) chrome. See hooks/use-viewport-height.ts and
-          the .h-app class in globals.css for the companion dvh-lag fix. */}
+          the .h-app class in globals.css for the companion dvh-lag fix.
+          The 3.25rem floor is a deliberate hard minimum: in standalone
+          PWA mode (no browser chrome to already push content down),
+          env(safe-area-inset-top) has been observed reporting 0 on some
+          iOS versions even though content is genuinely drawing under the
+          Dynamic Island/notch — so we never rely on env() alone. */}
       <div
         className="flex-shrink-0 bg-slate-900 border-b border-slate-800 px-4 pb-3 flex items-center gap-3"
-        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+        style={{ paddingTop: 'max(3.25rem, env(safe-area-inset-top))' }}
       >
         <button
           onClick={onClose}
