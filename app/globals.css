@@ -25,6 +25,28 @@
   --radius: 0.75rem;
 }
 
+/* ── Dynamic viewport height (JS-tracked) ──────────────────────────────
+ * `100dvh` should track the live visual viewport as mobile browser
+ * chrome (address bar, bottom toolbar) shows/hides, but WebKit has a
+ * known lag when the toolbar height changes right after an in-app (SPA)
+ * screen swap rather than a real page navigation — e.g. tapping into a
+ * Past Game from the Past Games list. During that lag, fixed full-screen
+ * containers sized with 100dvh can end up sized against a stale
+ * viewport, leaving fixed header/nav controls positioned under the
+ * browser's own (still-expanding/collapsing) chrome — a real, non-web
+ * area that silently swallows touches before they ever reach the page.
+ *
+ * --app-vh is kept in sync with window.visualViewport by
+ * hooks/use-viewport-height.ts (mounted once at the app root) and used
+ * as a JS-driven fallback wherever a screen has previously hit this bug.
+ */
+:root {
+  --app-vh: 100dvh;
+}
+.h-app {
+  height: var(--app-vh);
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;

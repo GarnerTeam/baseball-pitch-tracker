@@ -74,9 +74,15 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
   }
 
   return (
-    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col z-50">
-      {/* Header */}
-      <div className="flex-shrink-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center gap-3">
+    <div className="fixed inset-0 h-dvh h-app bg-slate-950 text-slate-100 flex flex-col z-50">
+      {/* Header — top padding cleared by env(safe-area-inset-top) so the
+          Back button is never rendered under a mobile browser's own
+          (still-animating) chrome. See hooks/use-viewport-height.ts and
+          the .h-app class in globals.css for the companion dvh-lag fix. */}
+      <div
+        className="flex-shrink-0 bg-slate-900 border-b border-slate-800 px-4 pb-3 flex items-center gap-3"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
         <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-200 text-[24px] leading-none px-1"
