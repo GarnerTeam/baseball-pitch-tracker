@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { UserButton } from '@clerk/nextjs';
 import { useGame } from '@/hooks/use-game';
+import { useViewportHeight } from '@/hooks/use-viewport-height';
 import { GameState } from '@/types';
 import { SetupScreen } from '@/components/setup-screen';
 import { PitchScreen } from '@/components/pitch-screen';
@@ -25,6 +26,12 @@ const HISTORY_NAV_TABS = NAV_TABS.filter(t => t.id !== 'pitch');
 
 export default function App() {
   const { state, actions } = useGame();
+  // Keeps --app-vh in sync with the real live viewport — fixes a WebKit
+  // lag where 100dvh doesn't recompute fast enough after an in-app screen
+  // swap (e.g. Past Games -> a specific game), leaving fixed header/nav
+  // controls briefly unreachable under the browser's own chrome. See
+  // hooks/use-viewport-height.ts and the .h-app class in globals.css.
+  useViewportHeight();
 
   // Historical (read-only) game being viewed — entirely separate from the
   // live useGame() state, so browsing past games can NEVER touch or clobber
@@ -50,9 +57,11 @@ export default function App() {
 
   if (historyState) {
     return (
-      <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col">
-        {/* Read-only banner */}
-        <div className="flex-shrink-0 bg-amber-950/60 border-b border-amber-800 px-4 py-2 flex items-center gap-3">
+      <div className="fixed inset-0 h-dvh h-app bg-slate-950 text-slate-100 flex flex-col">
+        {/* Read-only banner — top padding cleared by env(safe-area-inset-top)
+            so the Back button is never rendered under a mobile browser's
+            own (still-animating) chrome — see hooks/use-viewport-height.ts. */}
+        <div className="flex-shrink-0 bg-amber-950/60 border-b border-amber-800 px-4 pb-2 flex items-center gap-3" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
           <button
             onClick={() => setHistoryState(null)}
             className="text-amber-300 hover:text-amber-200 text-[15px] font-semibold flex-shrink-0"
