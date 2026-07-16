@@ -533,10 +533,12 @@ export function BatterHistoryModal({
 
   // ── Render ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 h-dvh z-50 bg-slate-950 flex flex-col">
+    <div className="fixed inset-0 h-dvh h-app z-50 bg-slate-950 flex flex-col">
 
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
+      {/* Header — pt-safe/h-app clear the iPhone notch/Dynamic Island in
+          standalone PWA mode, same fix as Past Games and the main app
+          shell (see hooks/use-viewport-height.ts and globals.css). */}
+      <div className="flex items-center gap-3 px-4 pb-3 pt-safe bg-slate-900 border-b border-slate-800 flex-shrink-0">
         <button onClick={onClose} className="text-slate-400 hover:text-white text-[26px] leading-none w-8 flex-shrink-0">←</button>
         <div className="flex-1 min-w-0">
           <p className="text-white font-bold text-[20px] leading-tight truncate">#{playerNumber} {playerName}</p>
