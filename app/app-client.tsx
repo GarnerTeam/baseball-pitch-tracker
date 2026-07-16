@@ -106,13 +106,13 @@ export default function App() {
   if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onSetWebhookUrl={actions.setSheetsUrl} onViewPastGames={() => setShowPastGames(true)} />;
   if (state.phase === 'hit-mode') {
     return (
-      <div className="fixed inset-0 h-dvh bg-slate-950 z-50">
+      <div className="fixed inset-0 h-dvh pt-safe bg-slate-950 z-50">
         <HitScreen onRecord={actions.recordHit} onCancel={actions.cancelHitMode} />
       </div>
     );
   }
   return (
-    <div className="fixed inset-0 h-dvh bg-slate-950 text-slate-100 flex flex-col">
+    <div className="fixed inset-0 h-dvh pt-safe bg-slate-950 text-slate-100 flex flex-col">
       <NotificationToast notification={state.notification} />
       {/* Each tab screen manages its own scroll — parent must NOT clip with overflow-hidden */}
       <div className="flex-1 min-h-0">

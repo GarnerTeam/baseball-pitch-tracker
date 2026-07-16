@@ -47,6 +47,18 @@
   height: var(--app-vh);
 }
 
+/* ── Safe-area top padding (fixed floor) ────────────────────────────
+ * Fixed full-screen app screens need real clearance from the iPhone
+ * notch/Dynamic Island. env(safe-area-inset-top) alone is not trustworthy
+ * here — it has been observed reporting 0 in standalone PWA mode on some
+ * iOS versions even though content genuinely draws under the island (see
+ * the Past Games fix). So .pt-safe always reserves a generous fixed
+ * minimum and layers the real env() value on top when it's larger.
+ */
+.pt-safe {
+  padding-top: max(3rem, env(safe-area-inset-top));
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
