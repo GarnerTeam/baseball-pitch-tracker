@@ -102,6 +102,7 @@ function flattenPitch(p: PitchRecord) {
     id:              p.id,
     isEdit:          p.isEdit          ?? false,
     rosterPlayerId:  p.rosterPlayerId   ?? '',
+    playerId:        p.playerId         ?? '',
   };
 }
 

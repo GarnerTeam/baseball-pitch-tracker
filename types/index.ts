@@ -80,6 +80,15 @@ export interface PitchRecord {
    *  apart siblings/same-name players and survives a guest player wearing a
    *  different jersey number in different games. */
   rosterPlayerId?: string;
+  /** Canonical long-term identity from the Players database (see
+   *  lib/players.ts), formatted "PLR0001". Set whenever the batter was
+   *  selected from (or newly created via) the player-name autocomplete on
+   *  the Lineup tab. This is the PRIMARY link for cross-game/cross-season/
+   *  cross-team scouting history — it survives name misspellings, jersey
+   *  number changes, and team changes, which batterName/batterNumber alone
+   *  never could. Display text (batterName) is unaffected; this field only
+   *  changes how history is looked up on the backend. */
+  playerId?: string;
 }
 
 export interface AtBat {
@@ -116,6 +125,31 @@ export interface RosterPlayer {
   name: string;
   number: string;
   hand: 'L' | 'R' | null;
+}
+
+/**
+ * A player in the coach's persistent, cross-game/cross-season/cross-team
+ * batter intelligence database (see lib/players.ts). Unlike RosterPlayer
+ * (scoped to one opposing team's saved lineup), a PlayerRecord is global to
+ * the coach's account — the same real player is recognized via autocomplete
+ * whether he's seen next week, next season, or on an entirely different
+ * team, as long as the coach picks him from the suggestion list instead of
+ * retyping his name. `id` ("PLR0001" style) is permanent and backend-
+ * generated; it is the authoritative link used for all scouting history,
+ * tendencies, and career totals — never batterName.
+ */
+export interface PlayerRecord {
+  id: string;
+  name: string;
+  number: string;
+  hand: 'L' | 'R' | null;
+  firstSeen: string;
+  lastSeen: string;
+  gamesSeen: number;
+  pitchesSeen: number;
+  notes: string;
+  verified: boolean;
+  isActive: boolean;
 }
 
 

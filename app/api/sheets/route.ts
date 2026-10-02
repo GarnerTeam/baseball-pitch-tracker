@@ -48,10 +48,15 @@ export async function POST(req: NextRequest) {
     // never trust a client-supplied userId, or any user could write rows
     // under someone else's identity. This route is already behind Clerk's
     // middleware, so a missing session here means something is misconfigured.
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    // Pitches are tagged with BOTH the real creator (userId, for audit /
+    // permissions / "who scored this") and the Organization scope
+    // (organizationId, falling back to the personal userId for solo
+    // coaches) that all batter-history and analytics queries key off of.
+    const organizationId = orgId || userId;
 
     const { webhookUrl, pitches } = await req.json();
 
@@ -59,7 +64,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing webhookUrl or pitches' }, { status: 400 });
     }
 
-    const stampedPitches = pitches.map((p: Record<string, unknown>) => ({ ...p, userId }));
+    const stampedPitches = pitches.map((p: Record<string, unknown>) => ({ ...p, userId, organizationId }));
     const bodyStr = JSON.stringify(stampedPitches);
     const { status, text, hops } = await postFollowingRedirects(webhookUrl, bodyStr);
 

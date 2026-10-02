@@ -21,6 +21,7 @@ import {
 } from '@/lib/game-engine';
 import { syncQueueToSheets, DEFAULT_WEBHOOK_URL } from '@/lib/sheets';
 import { isRosterId } from '@/lib/roster';
+import { isPlayerId } from '@/lib/players';
 
 const STORAGE_KEY = 'baseball-pitch-tracker-v1';
 
@@ -259,6 +260,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
         rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
+        playerId: isPlayerId(batter?.id) ? batter!.id : undefined,
       };
 
       const complete = isAtBatComplete(outcome);
@@ -329,6 +331,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
         rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
+        playerId: isPlayerId(batter?.id) ? batter!.id : undefined,
       };
 
       const completedAB: AtBat = {
@@ -398,6 +401,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         homeTeam: state.homeTeam,
         visitingTeam: state.visitingTeam,
         rosterPlayerId: isRosterId(batter?.id) ? batter!.id : undefined,
+        playerId: isPlayerId(batter?.id) ? batter!.id : undefined,
       };
       const ended: AtBat = {
         ...state.currentAtBat,

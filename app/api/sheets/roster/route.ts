@@ -20,16 +20,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing team parameter', players: [] }, { status: 400 });
   }
 
-  const { userId: sessionUserId } = await auth();
+  const { userId: sessionUserId, orgId: sessionOrgId } = await auth();
   const ownerParam = searchParams.get('owner') ?? '';
+  const organizationId = sessionOrgId || sessionUserId || ownerParam;
   const userId = sessionUserId || ownerParam;
 
-  if (!userId) {
+  if (!organizationId) {
     return NextResponse.json({ error: 'Missing owner — no session and no owner parameter provided' }, { status: 400 });
   }
 
   try {
-    const qs = new URLSearchParams({ action: 'roster', team, userId });
+    const qs = new URLSearchParams({ action: 'roster', team, organizationId, userId });
     const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
       method: 'GET',
       redirect: 'follow',
@@ -91,10 +92,11 @@ async function postFollowingRedirects(
  */
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    const organizationId = orgId || userId;
 
     const { webhookUrl, teamName, players } = await req.json();
 
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
 
     const stamped = players.map((p: Record<string, unknown>) => ({
       _kind: 'roster',
+      organizationId,
       userId,
       teamName: String(teamName),
       playerId: p.id,
