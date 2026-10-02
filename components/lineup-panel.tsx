@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, ReactNode } from 'react';
+import { useState, useRef, useEffect, ReactNode } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { GameState, Player, AtBat, PitchRecord, PitchType, PitchOutcome, PITCH_TYPE_COLORS } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
@@ -8,12 +8,116 @@ import { BatterHistoryModal } from '@/components/batter-history-modal';
 import { BatterFigureIcon } from '@/components/strike-zone';
 import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
 import { fetchRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
-import { RosterPlayer } from '@/types';
+import { fetchPlayers, createPlayer, isPlayerId } from '@/lib/players';
+import { RosterPlayer, PlayerRecord } from '@/types';
 
 interface SyncStatus {
   ok: boolean;
   message: string;
   ts: number;
+}
+
+interface SlotFormState {
+  name: string;
+  num: string;
+  hand: 'L' | 'R' | null;
+  /** Resolved identity for the name currently in the form — a Saved Roster
+   *  id, a persistent Players-database id, or null (meaning: not yet linked
+   *  to any stable identity, so saving will create a new player record / a
+   *  one-off id). Cleared whenever the name is typed by hand; set only when
+   *  a suggestion is tapped (PlayerNameInput) or the slot already had one. */
+  playerId: string | null;
+}
+
+/**
+ * Text input with an autocomplete dropdown of every player in the coach's
+ * persistent batter database (see lib/players.ts), mirroring the exact
+ * fetch-once-filter-client-side UX already used for My Team / Opposing Team
+ * autocomplete (TeamNameInput in components/setup-screen.tsx). Selecting a
+ * suggestion fills name + number + handedness and carries the player's
+ * permanent ID forward, so historical scouting data follows him across
+ * games, seasons, and teams. Typing a name that isn't picked from the list
+ * creates a brand-new player on save instead (see resolvePlayerIdentity).
+ */
+function PlayerNameInput({
+  value, onTextChange, onPick, players, placeholder, autoFocus, borderColor, onEnter,
+}: {
+  value: string;
+  onTextChange: (v: string) => void;
+  onPick: (player: PlayerRecord) => void;
+  players: PlayerRecord[];
+  placeholder: string;
+  autoFocus?: boolean;
+  borderColor?: string;
+  onEnter?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const query = value.trim().toLowerCase();
+  const matches = players
+    .filter(p => p.name.toLowerCase().includes(query))
+    .sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(query) ? 0 : 1;
+      const bStarts = b.name.toLowerCase().startsWith(query) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return b.pitchesSeen - a.pitchesSeen;
+    })
+    .slice(0, 8);
+  const showDropdown = open && players.length > 0 && matches.length > 0;
+
+  function formatLastSeen(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: 'numeric' });
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative flex-1">
+      <input
+        value={value}
+        onChange={e => onTextChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onKeyDown={e => { if (e.key === 'Enter' && onEnter) onEnter(); }}
+        placeholder={placeholder}
+        className={`w-full h-10 rounded-lg bg-slate-800 border ${borderColor ?? 'border-slate-600'} text-slate-100 px-3 outline-none focus:border-blue-500`}
+        autoComplete="off"
+        autoFocus={autoFocus}
+      />
+      {showDropdown && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-slate-800 border border-slate-600 rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+          {matches.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { onPick(p); setOpen(false); }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-700 active:bg-slate-700 transition-colors border-b border-slate-700/60 last:border-0"
+            >
+              <p className="text-slate-100 text-[17px] font-semibold">
+                {p.name}{p.number && <span className="text-slate-400 font-normal"> (#{p.number})</span>}
+                {p.hand && <span className="text-slate-500 font-normal text-[14px]"> {p.hand}HB</span>}
+              </p>
+              <p className="text-slate-500 text-[13px]">
+                {p.pitchesSeen} pitch{p.pitchesSeen !== 1 ? 'es' : ''} · {p.gamesSeen} game{p.gamesSeen !== 1 ? 's' : ''}
+                {p.lastSeen && <> · Last seen {formatLastSeen(p.lastSeen)}</>}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface LineupPanelProps {
@@ -528,8 +632,65 @@ export function LineupPanel({
     currentGamePitches: PitchRowLite[];
     rosterId?: string;
   } | null>(null);
-  const [slotForm, setSlotForm] = useState({ name: '', num: '' });
+  const [slotForm, setSlotForm] = useState<SlotFormState>({ name: '', num: '', hand: null, playerId: null });
+  const [slotSaving, setSlotSaving] = useState(false);
+  const [slotSaveError, setSlotSaveError] = useState<string | null>(null);
   const [extraSlots, setExtraSlots] = useState(0);
+
+  // ── Persistent Player database (autocomplete + cross-game/season/team
+  //    identity) — fetched once and filtered client-side as the coach
+  //    types, exactly like the My Team / Opposing Team autocomplete. ──────
+  const [knownPlayers, setKnownPlayers] = useState<PlayerRecord[]>([]);
+  useEffect(() => {
+    if (!state.sheetsWebhookUrl) { setKnownPlayers([]); return; }
+    let cancelled = false;
+    fetchPlayers(state.sheetsWebhookUrl, ownerId)
+      .then(players => { if (!cancelled) setKnownPlayers(players); })
+      .catch(() => { /* silent — autocomplete is a nice-to-have, not critical */ });
+    return () => { cancelled = true; };
+  }, [state.sheetsWebhookUrl, ownerId]);
+
+  /**
+   * Resolves what identity a lineup slot should carry when saved:
+   *   1. A suggestion was tapped in the autocomplete → use its id directly.
+   *   2. The slot already had a stable identity (Saved Roster or Players-db
+   *      id) and the coach is just correcting a typo/number → keep it, so a
+   *      quick correction never forks off a duplicate player record.
+   *   3. No name typed, or no Sheets connection → fall back to a harmless
+   *      one-off id (today's existing behavior).
+   *   4. Otherwise: look for an exact (case-insensitive) name match already
+   *      loaded from the Players database and reuse it — covers the coach
+   *      retyping a known name without tapping the suggestion. If nothing
+   *      matches, create a brand-new player and use the backend-generated
+   *      permanent id. A backend hiccup never blocks mid-game data entry —
+   *      it just means this particular batter won't carry a Players-db
+   *      identity for this game.
+   */
+  async function resolvePlayerIdentity(
+    name: string,
+    number: string,
+    hand: 'L' | 'R' | null,
+    pickedId: string | null,
+    existingId?: string,
+  ): Promise<string> {
+    if (pickedId) return pickedId;
+    if (existingId && (isRosterId(existingId) || isPlayerId(existingId))) return existingId;
+
+    const trimmedName = name.trim();
+    if (!trimmedName || !state.sheetsWebhookUrl) return existingId ?? crypto.randomUUID();
+
+    const exactMatch = knownPlayers.find(p => p.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (exactMatch) return exactMatch.id;
+
+    try {
+      const created = await createPlayer(state.sheetsWebhookUrl, { name: trimmedName, number: number.trim(), hand });
+      setKnownPlayers(prev => [...prev, created]);
+      return created.id;
+    } catch (e) {
+      setSlotSaveError(`Couldn't save "${trimmedName}" to your player database (${String(e instanceof Error ? e.message : e)}) — batter was still added to this game.`);
+      return existingId ?? crypto.randomUUID();
+    }
+  }
 
   // ── Saved Roster state ────────────────────────────────────────────────────
   const [rosterMenuOpen, setRosterMenuOpen] = useState(false);
@@ -667,9 +828,15 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       setExpanded(null);
     } else {
       setExpanded({ idx, view });
-      setSlotForm({ name: prefill?.name ?? '', num: prefill?.number ?? '' });
+      setSlotForm({
+        name: prefill?.name ?? '',
+        num: prefill?.number ?? '',
+        hand: prefill?.hand ?? null,
+        playerId: (prefill && (isRosterId(prefill.id) || isPlayerId(prefill.id))) ? prefill.id : null,
+      });
     }
     setEditingPitch(null);
+    setSlotSaveError(null);
   }
 
   function handleSlotRowClick(idx: number) {
@@ -687,17 +854,25 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       setExpanded(null);
     } else {
       setExpanded({ idx, view: 'edit' });
-      setSlotForm({ name: '', num: '' });
+      setSlotForm({ name: '', num: '', hand: null, playerId: null });
     }
     setEditingPitch(null);
+    setSlotSaveError(null);
   }
 
-  function handleSave(idx: number) {
+  async function handleSave(idx: number) {
     // Name and number are optional — save whatever the user has entered
-    const player: Player = { id: crypto.randomUUID(), name: slotForm.name.trim(), number: slotForm.num.trim() };
-    onSetBatterAt(idx, player);
-    setExpanded(null);
-    setSlotForm({ name: '', num: '' });
+    setSlotSaving(true);
+    setSlotSaveError(null);
+    try {
+      const id = await resolvePlayerIdentity(slotForm.name, slotForm.num, slotForm.hand, slotForm.playerId);
+      const player: Player = { id, name: slotForm.name.trim(), number: slotForm.num.trim(), hand: slotForm.hand ?? undefined };
+      onSetBatterAt(idx, player);
+      setExpanded(null);
+      setSlotForm({ name: '', num: '', hand: null, playerId: null });
+    } finally {
+      setSlotSaving(false);
+    }
   }
 
   function handleEditExistingClick(e: React.MouseEvent, idx: number, player: Player) {
@@ -706,17 +881,30 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       setExpanded(null);
     } else {
       setExpanded({ idx, view: 'edit-existing' });
-      setSlotForm({ name: player.name, num: player.number });
+      setSlotForm({
+        name: player.name,
+        num: player.number,
+        hand: player.hand ?? null,
+        playerId: (isRosterId(player.id) || isPlayerId(player.id)) ? player.id : null,
+      });
     }
     setEditingPitch(null);
+    setSlotSaveError(null);
   }
 
-  function handleEditExistingSave(idx: number, currentPlayer: Player) {
+  async function handleEditExistingSave(idx: number, currentPlayer: Player) {
     // Name and number are optional
-    const player: Player = { ...currentPlayer, name: slotForm.name.trim(), number: slotForm.num.trim() };
-    onSetBatterAt(idx, player);
-    setExpanded(null);
-    setSlotForm({ name: '', num: '' });
+    setSlotSaving(true);
+    setSlotSaveError(null);
+    try {
+      const id = await resolvePlayerIdentity(slotForm.name, slotForm.num, slotForm.hand, slotForm.playerId, currentPlayer.id);
+      const player: Player = { ...currentPlayer, id, name: slotForm.name.trim(), number: slotForm.num.trim(), hand: slotForm.hand ?? currentPlayer.hand };
+      onSetBatterAt(idx, player);
+      setExpanded(null);
+      setSlotForm({ name: '', num: '', hand: null, playerId: null });
+    } finally {
+      setSlotSaving(false);
+    }
   }
 
   // ── Drag helpers ───────────────────────────────────────────────────────
@@ -1138,7 +1326,7 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                               number:             player!.number,
                               currentGameId:      gameId,
                               currentGamePitches: bPitches,
-                              rosterId:           isRosterId(player!.id) ? player!.id : undefined,
+                              rosterId:           (isRosterId(player!.id) || isPlayerId(player!.id)) ? player!.id : undefined,
                             });
                           }}
                           className="w-full py-2.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 text-[18px] font-semibold flex items-center justify-center gap-2"
@@ -1169,19 +1357,24 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                         maxLength={3}
                         className="w-14 h-10 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-center font-bold outline-none focus:border-blue-500 flex-shrink-0"
                       />
-                      <input
+                      <PlayerNameInput
                         value={slotForm.name}
-                        onChange={e => setSlotForm(s => ({ ...s, name: e.target.value }))}
+                        onTextChange={v => setSlotForm(s => ({ ...s, name: v, playerId: null }))}
+                        onPick={p => setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id }))}
+                        players={knownPlayers}
                         placeholder="Player name (optional)"
-                        onKeyDown={e => { if (e.key === 'Enter') handleSave(idx); }}
-                        className="flex-1 h-10 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 px-3 outline-none focus:border-blue-500"
+                        onEnter={() => handleSave(idx)}
                         autoFocus
                       />
                       <button
                         onClick={() => handleSave(idx)}
-                        className="px-3 h-10 rounded-lg bg-green-700 hover:bg-green-600 text-white font-bold text-[27px] flex-shrink-0"
-                      >✓</button>
+                        disabled={slotSaving}
+                        className="px-3 h-10 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-bold text-[27px] flex-shrink-0"
+                      >{slotSaving ? '…' : '✓'}</button>
                     </div>
+                    {slotSaveError && (
+                      <p className="text-amber-400 text-[13px] mt-1.5">{slotSaveError}</p>
+                    )}
                     {/* Clear slot: only for filled slots that are not currently active */}
                     {hasPlayer && idx !== currentBatterIndex && (
                       <button
@@ -1209,19 +1402,25 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                         maxLength={3}
                         className="w-14 h-10 rounded-lg bg-slate-800 border border-blue-700 text-slate-100 text-center font-bold outline-none focus:border-blue-400 flex-shrink-0"
                       />
-                      <input
+                      <PlayerNameInput
                         value={slotForm.name}
-                        onChange={e => setSlotForm(s => ({ ...s, name: e.target.value }))}
+                        onTextChange={v => setSlotForm(s => ({ ...s, name: v, playerId: null }))}
+                        onPick={p => setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id }))}
+                        players={knownPlayers}
                         placeholder="Player name (optional)"
-                        onKeyDown={e => { if (e.key === 'Enter') handleEditExistingSave(idx, player); }}
-                        className="flex-1 h-10 rounded-lg bg-slate-800 border border-blue-700 text-slate-100 px-3 outline-none focus:border-blue-400"
+                        borderColor="border-blue-700"
+                        onEnter={() => handleEditExistingSave(idx, player)}
                         autoFocus
                       />
                       <button
                         onClick={() => handleEditExistingSave(idx, player)}
-                        className="px-3 h-10 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-[27px] flex-shrink-0"
-                      >✓</button>
+                        disabled={slotSaving}
+                        className="px-3 h-10 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-[27px] flex-shrink-0"
+                      >{slotSaving ? '…' : '✓'}</button>
                     </div>
+                    {slotSaveError && (
+                      <p className="text-amber-400 text-[13px] mt-1.5">{slotSaveError}</p>
+                    )}
                   </div>
                 )}
               </div>
