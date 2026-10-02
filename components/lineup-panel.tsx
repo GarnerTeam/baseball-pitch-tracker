@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, ReactNode } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useOrganization } from '@clerk/nextjs';
 import { GameState, Player, AtBat, PitchRecord, PitchType, PitchOutcome, PITCH_TYPE_COLORS } from '@/types';
 import { PitchRow } from '@/components/pitch-row';
 import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
@@ -412,7 +412,13 @@ function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose:
   // (unauthenticated) Scout page can be scoped to just this coach's data,
   // now that the sheet holds multiple coaches' rows.
   const { user } = useUser();
-  const ownerId  = user?.id ?? '';
+  const { organization } = useOrganization();
+  // Player identity, lineup autocomplete, and all historical batter
+  // intelligence are scoped to the coach's Clerk Organization (so every
+  // authorized assistant coach / parent / scorer in the same org sees the
+  // same database) — falling back to the personal userId for solo coaches
+  // who haven't set up an Organization yet.
+  const ownerId  = organization?.id ?? user?.id ?? '';
   const scoutUrl = `https://scout.robertegarner.com?url=${encodeURIComponent(webhookUrl)}&owner=${encodeURIComponent(ownerId)}`;
   const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(scoutUrl)}&bgcolor=0f172a&color=e2e8f0&margin=12`;
   const [copied, setCopied] = useState(false);

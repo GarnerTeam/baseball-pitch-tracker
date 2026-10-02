@@ -11,10 +11,15 @@ import { auth } from "@clerk/nextjs/server";
  * scoping every result comes from the Clerk session, never from the client.
  */
 export async function GET(req: NextRequest) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+  // Player identity + historical data are scoped to the Clerk Organization
+  // when the coach belongs to one, so every teammate/assistant coach in the
+  // same org sees the same games list. Falls back to the personal userId
+  // for solo coaches who have not set up an Organization yet.
+  const organizationId = orgId || userId;
 
   const { searchParams } = new URL(req.url);
   const webhookUrl = searchParams.get("url");
@@ -24,7 +29,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const qs = new URLSearchParams({ action: "games", userId });
+    const qs = new URLSearchParams({ action: "games", organizationId, userId });
     const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
       method: "GET",
       redirect: "follow",

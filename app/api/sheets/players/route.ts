@@ -19,24 +19,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
 
-  const { userId: sessionUserId } = await auth();
+  const { userId: sessionUserId, orgId: sessionOrgId } = await auth();
   const ownerParam = searchParams.get('owner') ?? '';
-  const userId = sessionUserId || ownerParam;
+  // Players are scoped to the Organization, not the individual coach — any
+  // authorized teammate in the same org sees the same batter database.
+  const organizationId = sessionOrgId || sessionUserId || ownerParam;
 
-  if (!userId) {
+  if (!organizationId) {
     return NextResponse.json({ error: 'Missing owner — no session and no owner parameter provided' }, { status: 400 });
   }
 
   try {
-    const json = await fetchPlayersFromScript(webhookUrl, userId);
+    const json = await fetchPlayersFromScript(webhookUrl, organizationId);
     return NextResponse.json(json);
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
-async function fetchPlayersFromScript(webhookUrl: string, userId: string): Promise<Record<string, unknown>> {
-  const qs = new URLSearchParams({ action: 'players', userId });
+async function fetchPlayersFromScript(webhookUrl: string, organizationId: string): Promise<Record<string, unknown>> {
+  const qs = new URLSearchParams({ action: 'players', organizationId });
   const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
     method: 'GET',
     redirect: 'follow',
@@ -95,10 +97,14 @@ async function postFollowingRedirects(
  */
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+    // New players belong to the coach's Organization (shared batter
+    // intelligence), not their personal account — falls back to userId
+    // for solo coaches with no Organization set up yet.
+    const organizationId = orgId || userId;
 
     const { webhookUrl, name, number, hand } = await req.json();
     const trimmedName = String(name ?? '').trim();
@@ -144,7 +150,7 @@ export async function POST(req: NextRequest) {
     // created before — astronomically unlikely to pick the wrong row).
     if (status === 405 || (status >= 200 && status < 300)) {
       try {
-        const listJson = await fetchPlayersFromScript(webhookUrl, userId);
+        const listJson = await fetchPlayersFromScript(webhookUrl, organizationId);
         const players = (listJson.players as Array<Record<string, unknown>> | undefined) ?? [];
         const candidates = players.filter(p =>
           String(p.name ?? '').trim().toLowerCase() === trimmedName.toLowerCase() &&
