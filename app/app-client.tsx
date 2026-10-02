@@ -13,6 +13,8 @@ import { AnalyticsScreen } from '@/components/analytics-screen';
 import { GameLog } from '@/components/game-log';
 import { NotificationToast } from '@/components/notification-toast';
 import { PastGamesBrowser } from '@/components/past-games-browser';
+import { PlayerProfileScreen } from '@/components/player-profile-screen';
+import { useOrganization, useUser } from '@clerk/nextjs';
 
 const NAV_TABS = [
   { id: 'pitch' as const, label: 'Pitch', icon: '⚾' },
@@ -39,6 +41,22 @@ export default function App() {
   const [historyState, setHistoryState] = useState<GameState | null>(null);
   const [historyTab, setHistoryTab] = useState<'lineup' | 'analytics' | 'log'>('lineup');
   const [showPastGames, setShowPastGames] = useState(false);
+  const [showPlayers, setShowPlayers] = useState(false);
+  // Player Profile Management is scoped to the Organization, same as
+  // Lineup-tab autocomplete (see components/lineup-panel.tsx).
+  const { organization } = useOrganization();
+  const { user } = useUser();
+  const ownerId = organization?.id ?? user?.id ?? '';
+
+  if (showPlayers) {
+    return (
+      <PlayerProfileScreen
+        webhookUrl={state.sheetsWebhookUrl}
+        ownerId={ownerId}
+        onClose={() => setShowPlayers(false)}
+      />
+    );
+  }
 
   if (showPastGames) {
     return (
@@ -135,6 +153,10 @@ export default function App() {
         <button onClick={() => setShowPastGames(true)} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-slate-300 transition-colors">
           <span className="text-[22px] leading-none">📂</span>
           <span className="text-[12px] font-medium">History</span>
+        </button>
+        <button onClick={() => setShowPlayers(true)} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-slate-300 transition-colors">
+          <span className="text-[22px] leading-none">👤</span>
+          <span className="text-[12px] font-medium">Players</span>
         </button>
         <button onClick={() => { if (confirm('Start a new game? Data will be cleared.')) actions.newGame(); }} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-red-400 transition-colors">
           <span className="text-[22px] leading-none">🔄</span>

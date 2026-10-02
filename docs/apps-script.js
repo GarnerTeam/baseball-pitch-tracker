@@ -219,6 +219,10 @@ function doGet(e) {
       return getPlayersList(organizationId, userId);
     }
 
+    if (action === 'unlinkedbatters') {
+      return getUnlinkedBatters(organizationId, userId);
+    }
+
     return jsonOut({ error: 'Unknown action: ' + action });
   } catch (err) {
     Logger.log('doGet error: ' + err.toString());
@@ -704,6 +708,333 @@ function updatePlayerStatsFromPitches(newRows) {
   }
 }
 
+// ─── PLAYER IDENTITY PHASE 2: historical matching, duplicate merge, profile ────
+// Everything below is an explicit, reviewed action the coach triggers from the
+// Player Profile screen — nothing here runs automatically. This is what
+// safely backfills playerId onto pre-migration Pitches rows and lets a coach
+// fix an accidental duplicate player without ever deleting data (merged-away
+// players are deactivated, never removed, so nothing referencing their id
+// breaks).
+
+/**
+ * Recomputes gamesSeen / pitchesSeen / lastSeen from scratch by scanning
+ * every non-edit Pitches row currently tagged with this playerId. Unlike
+ * updatePlayerStatsFromPitches (an incremental delta applied right after a
+ * live pitch-sync write), this does a full rescan — required after a
+ * historical-attach or a merge, where the player's tagged pitch set just
+ * changed by more than "the rows in this one sync batch". firstSeen is
+ * preserved; lastSeen is recomputed as the max timestamp seen.
+ */
+function recomputePlayerStats(playerId, organizationId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var playersSheet = ss.getSheetByName('Players');
+  if (!playersSheet) return null;
+
+  var pLastRow = playersSheet.getLastRow();
+  if (pLastRow < 2) return null;
+  var pData = playersSheet.getRange(1, 1, pLastRow, PLAYER_COLUMNS.length).getValues();
+
+  var targetRow = -1;
+  for (var i = 1; i < pData.length; i++) {
+    if (String(pData[i][0] || '').trim() === playerId) { targetRow = i + 1; break; }
+  }
+  if (targetRow < 0) return null; // unknown playerId — nothing to recompute
+
+  var pitchesSheet = ss.getSheetByName('Pitches');
+  var pitchesSeen = 0;
+  var gameIds = {};
+  var lastSeen = '';
+
+  if (pitchesSheet && pitchesSheet.getLastRow() >= 2) {
+    var lastCol = pitchesSheet.getLastColumn();
+    var data = pitchesSheet.getRange(1, 1, pitchesSheet.getLastRow(), lastCol).getValues();
+    var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+    var hmap = buildHeaderMap(rawHeaders);
+    var playerIdIdx = hmap['playerId'] !== undefined ? hmap['playerId'] : hmap['Player ID'];
+    var editIdx     = hmap['isEdit']   !== undefined ? hmap['isEdit']   : hmap['Is Edit'];
+    var gameIdIdx   = hmap['gameId']   !== undefined ? hmap['gameId']   : hmap['Game ID'];
+    var tsIdx       = hmap['timestamp']!== undefined ? hmap['timestamp']: hmap['Timestamp'];
+
+    if (playerIdIdx !== undefined) {
+      for (var r = 1; r < data.length; r++) {
+        var row = data[r];
+        if (String(row[playerIdIdx] || '').trim() !== playerId) continue;
+        if (isEditRow(row, editIdx)) continue;
+        pitchesSeen++;
+        var gid = gameIdIdx !== undefined ? String(row[gameIdIdx] || '').trim() : '';
+        if (gid) gameIds[gid] = true;
+        var rawTs = tsIdx !== undefined ? row[tsIdx] : '';
+        var tsStr = rawTs instanceof Date
+          ? Utilities.formatDate(rawTs, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'Z'")
+          : String(rawTs || '');
+        if (tsStr && (!lastSeen || tsStr > lastSeen)) lastSeen = tsStr;
+      }
+    }
+  }
+
+  var gamesSeen = Object.keys(gameIds).length;
+  if (lastSeen) playersSheet.getRange(targetRow, 7).setValue(lastSeen); // Last Seen
+  playersSheet.getRange(targetRow, 8).setValue(gamesSeen);              // Games Seen
+  playersSheet.getRange(targetRow, 9).setValue(pitchesSeen);            // Pitches Seen
+
+  return { id: playerId, gamesSeen: gamesSeen, pitchesSeen: pitchesSeen, lastSeen: lastSeen };
+}
+
+/**
+ * Returns every DISTINCT (batterName, batterNumber) combination recorded in
+ * this organization's Pitches with NO playerId yet — pre-migration rows, or
+ * rows recorded by typing a name without using the autocomplete. Powers the
+ * "Attach historical records" suggestion list on the Player Profile screen.
+ * Never attaches anything itself — purely a read for the coach to review.
+ */
+function getUnlinkedBatters(organizationId, userId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet) return jsonOut({ batters: [], count: 0 });
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut({ batters: [], count: 0 });
+
+  var lastCol = sheet.getLastColumn();
+  var data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+  var hmap = buildHeaderMap(rawHeaders);
+
+  var nameIdx     = hmap['batterName']     !== undefined ? hmap['batterName']     : hmap['Batter Name'];
+  var numIdx      = hmap['batterNumber']   !== undefined ? hmap['batterNumber']   : hmap['Batter #'];
+  var editIdx     = hmap['isEdit']         !== undefined ? hmap['isEdit']         : hmap['Is Edit'];
+  var userIdIdx   = hmap['userId']         !== undefined ? hmap['userId']         : hmap['User ID'];
+  var orgIdIdx    = hmap['organizationId'] !== undefined ? hmap['organizationId'] : hmap['Organization ID'];
+  var playerIdIdx = hmap['playerId']       !== undefined ? hmap['playerId']       : hmap['Player ID'];
+  var gameIdIdx   = hmap['gameId']         !== undefined ? hmap['gameId']         : hmap['Game ID'];
+
+  if (nameIdx === undefined || playerIdIdx === undefined) {
+    return jsonOut({ error: 'Cannot find batterName/playerId columns', batters: [] });
+  }
+
+  var buckets = {}; // key = name|number -> { name, number, pitchCount, gameIds:{} }
+  var order = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!rowMatchesScope(row, orgIdIdx, userIdIdx, organizationId, userId)) continue;
+    if (isEditRow(row, editIdx)) continue;
+    if (String(row[playerIdIdx] || '').trim()) continue; // already linked — skip
+    var name = String(row[nameIdx] || '').trim();
+    if (!name) continue;
+    var num = numIdx !== undefined ? String(row[numIdx] || '').trim() : '';
+    var key = name.toLowerCase() + '|' + num;
+    if (!buckets[key]) { buckets[key] = { name: name, number: num, pitchCount: 0, gameIds: {} }; order.push(key); }
+    buckets[key].pitchCount++;
+    var gid = gameIdIdx !== undefined ? String(row[gameIdIdx] || '').trim() : '';
+    if (gid) buckets[key].gameIds[gid] = true;
+  }
+
+  var batters = order.map(function(key) {
+    var b = buckets[key];
+    return { name: b.name, number: b.number, pitchCount: b.pitchCount, gameCount: Object.keys(b.gameIds).length };
+  }).sort(function(a, b) { return b.pitchCount - a.pitchCount; });
+
+  return jsonOut({ batters: batters, count: batters.length });
+}
+
+/**
+ * Attaches every unlinked Pitches row matching (batterName, batterNumber)
+ * within this organization to the given playerId — the explicit, reviewed
+ * counterpart to the "no automatic backfill" rule from the original design.
+ * Only rows that are (a) in-scope for this organization, (b) not edit rows,
+ * and (c) currently have a BLANK playerId are touched — an already-linked
+ * row is never silently reassigned to a different player.
+ */
+function attachHistoricalRecords(item) {
+  var organizationId = String(item.organizationId || '').trim();
+  var playerId        = String(item.playerId || '').trim();
+  var batterName       = String(item.batterName || '').trim();
+  var batterNumber      = String(item.batterNumber || '').trim();
+  if (!organizationId || !playerId || !batterName) {
+    throw new Error('attachHistoricalRecords requires organizationId, playerId, and batterName');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Pitches');
+  if (!sheet || sheet.getLastRow() < 2) return { attached: 0 };
+
+  var lastCol = sheet.getLastColumn();
+  var data = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+  var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+  var hmap = buildHeaderMap(rawHeaders);
+
+  var nameIdx     = hmap['batterName']     !== undefined ? hmap['batterName']     : hmap['Batter Name'];
+  var numIdx      = hmap['batterNumber']   !== undefined ? hmap['batterNumber']   : hmap['Batter #'];
+  var editIdx     = hmap['isEdit']         !== undefined ? hmap['isEdit']         : hmap['Is Edit'];
+  var userIdIdx   = hmap['userId']         !== undefined ? hmap['userId']         : hmap['User ID'];
+  var orgIdIdx    = hmap['organizationId'] !== undefined ? hmap['organizationId'] : hmap['Organization ID'];
+  var playerIdIdx = hmap['playerId']       !== undefined ? hmap['playerId']       : hmap['Player ID'];
+
+  if (playerIdIdx === undefined) throw new Error('Cannot find playerId column — run setupSheet() first');
+
+  var nameLower = batterName.toLowerCase();
+  var attached = 0;
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!rowMatchesScope(row, orgIdIdx, userIdIdx, organizationId, item.userId)) continue;
+    if (isEditRow(row, editIdx)) continue;
+    if (String(row[playerIdIdx] || '').trim()) continue; // already linked
+    if (String(row[nameIdx] || '').trim().toLowerCase() !== nameLower) continue;
+    var rowNum = numIdx !== undefined ? String(row[numIdx] || '').trim() : '';
+    if (batterNumber && rowNum !== batterNumber) continue;
+
+    sheet.getRange(i + 1, playerIdIdx + 1).setValue(playerId);
+    attached++;
+  }
+
+  if (attached > 0) recomputePlayerStats(playerId, organizationId);
+  return { attached: attached };
+}
+
+/**
+ * Merges a duplicate player record into a primary one. Every Pitches row
+ * and Rosters row currently tagged with sourcePlayerId is re-tagged to
+ * targetPlayerId; the source Players row is marked isActive=false (NEVER
+ * deleted — its id must keep resolving harmlessly for anything that still
+ * references it); the target's stats are recomputed from its full merged
+ * history. Both players must belong to the SAME organization — merging
+ * across organizations is refused.
+ */
+function mergePlayers(item) {
+  var organizationId  = String(item.organizationId || '').trim();
+  var sourcePlayerId  = String(item.sourcePlayerId || '').trim();
+  var targetPlayerId  = String(item.targetPlayerId || '').trim();
+  if (!organizationId || !sourcePlayerId || !targetPlayerId) {
+    throw new Error('mergePlayers requires organizationId, sourcePlayerId, and targetPlayerId');
+  }
+  if (sourcePlayerId === targetPlayerId) {
+    throw new Error('sourcePlayerId and targetPlayerId must be different');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var playersSheet = ss.getSheetByName('Players');
+  if (!playersSheet || playersSheet.getLastRow() < 2) {
+    throw new Error('No Players sheet / no players to merge');
+  }
+  var pData = playersSheet.getRange(1, 1, playersSheet.getLastRow(), PLAYER_COLUMNS.length).getValues();
+
+  var sourceRow = -1, targetRow = -1;
+  for (var i = 1; i < pData.length; i++) {
+    var rowId = String(pData[i][0] || '').trim();
+    if (rowId === sourcePlayerId) sourceRow = i + 1;
+    if (rowId === targetPlayerId) targetRow = i + 1;
+  }
+  if (sourceRow < 0 || targetRow < 0) {
+    throw new Error('Could not find both players — check the ids');
+  }
+  // Guard: both players must belong to the requested organization — never
+  // let a merge reach across organizations.
+  var sourceOrg = String(pData[sourceRow - 1][1] || '').trim();
+  var targetOrg = String(pData[targetRow - 1][1] || '').trim();
+  if (sourceOrg !== organizationId || targetOrg !== organizationId) {
+    throw new Error('Both players must belong to the requesting organization');
+  }
+
+  // Re-tag every Pitches row referencing the source player.
+  var pitchesSheet = ss.getSheetByName('Pitches');
+  var pitchesUpdated = 0;
+  if (pitchesSheet && pitchesSheet.getLastRow() >= 2) {
+    var lastCol = pitchesSheet.getLastColumn();
+    var data = pitchesSheet.getRange(1, 1, pitchesSheet.getLastRow(), lastCol).getValues();
+    var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
+    var hmap = buildHeaderMap(rawHeaders);
+    var playerIdIdx = hmap['playerId'] !== undefined ? hmap['playerId'] : hmap['Player ID'];
+    if (playerIdIdx !== undefined) {
+      for (var r = 1; r < data.length; r++) {
+        if (String(data[r][playerIdIdx] || '').trim() === sourcePlayerId) {
+          pitchesSheet.getRange(r + 1, playerIdIdx + 1).setValue(targetPlayerId);
+          pitchesUpdated++;
+        }
+      }
+    }
+  }
+
+  // Re-tag every Rosters row referencing the source player (positional
+  // column 2 — see ROSTER_COLUMNS).
+  var rostersSheet = ss.getSheetByName('Rosters');
+  var rostersUpdated = 0;
+  if (rostersSheet && rostersSheet.getLastRow() >= 2) {
+    var rData = rostersSheet.getRange(1, 1, rostersSheet.getLastRow(), ROSTER_COLUMNS.length).getValues();
+    for (var rr = 1; rr < rData.length; rr++) {
+      if (String(rData[rr][2] || '').trim() === sourcePlayerId) {
+        rostersSheet.getRange(rr + 1, 3).setValue(targetPlayerId);
+        rostersUpdated++;
+      }
+    }
+  }
+
+  // Deactivate the source player — never delete it.
+  playersSheet.getRange(sourceRow, 12).setValue(false); // Is Active
+
+  var updatedTarget = recomputePlayerStats(targetPlayerId, organizationId);
+
+  return {
+    merged: true,
+    sourcePlayerId: sourcePlayerId,
+    targetPlayerId: targetPlayerId,
+    pitchesReassigned: pitchesUpdated,
+    rostersReassigned: rostersUpdated,
+    target: updatedTarget,
+  };
+}
+
+/**
+ * Updates editable fields on an existing player record — powers the Player
+ * Profile edit screen (fix a typo'd name/number, correct handedness, add
+ * scouting notes, toggle Verified/Is Active). Only fields explicitly
+ * present in `patch` are touched; organizationId/firstSeen/stats are never
+ * editable through this path.
+ */
+function updatePlayerProfile(item) {
+  var organizationId = String(item.organizationId || '').trim();
+  var playerId = String(item.playerId || '').trim();
+  var patch = item.patch || {};
+  if (!organizationId || !playerId) {
+    throw new Error('updatePlayerProfile requires organizationId and playerId');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Players');
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('No Players sheet');
+
+  var data = sheet.getRange(1, 1, sheet.getLastRow(), PLAYER_COLUMNS.length).getValues();
+  var targetRow = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim() === playerId && String(data[i][1] || '').trim() === organizationId) {
+      targetRow = i + 1;
+      break;
+    }
+  }
+  if (targetRow < 0) throw new Error('Player not found in this organization');
+
+  if (patch.name !== undefined)     sheet.getRange(targetRow, 3).setValue(String(patch.name));
+  if (patch.number !== undefined)   sheet.getRange(targetRow, 4).setValue(String(patch.number));
+  if (patch.hand !== undefined)     sheet.getRange(targetRow, 5).setValue(String(patch.hand || ''));
+  if (patch.notes !== undefined)    sheet.getRange(targetRow, 10).setValue(String(patch.notes));
+  if (patch.verified !== undefined) sheet.getRange(targetRow, 11).setValue(!!patch.verified);
+  if (patch.isActive !== undefined) sheet.getRange(targetRow, 12).setValue(!!patch.isActive);
+
+  var updatedRow = sheet.getRange(targetRow, 1, 1, PLAYER_COLUMNS.length).getValues()[0];
+  return {
+    id:          String(updatedRow[0] || ''),
+    name:        String(updatedRow[2] || ''),
+    number:      String(updatedRow[3] || ''),
+    hand:        String(updatedRow[4] || '') || null,
+    firstSeen:   updatedRow[5] instanceof Date ? updatedRow[5].toISOString() : String(updatedRow[5] || ''),
+    lastSeen:    updatedRow[6] instanceof Date ? updatedRow[6].toISOString() : String(updatedRow[6] || ''),
+    gamesSeen:   Number(updatedRow[7]) || 0,
+    pitchesSeen: Number(updatedRow[8]) || 0,
+    notes:       String(updatedRow[9] || ''),
+    verified:    updatedRow[10] === true || String(updatedRow[10]).toUpperCase() === 'TRUE',
+    isActive:    updatedRow[11] === true || String(updatedRow[11]).toUpperCase() === 'TRUE',
+  };
+}
+
 // ─── getGameScout ─────────────────────────────────────────────────────────────
 
 function getGameScout(gameId, organizationId, userId) {
@@ -874,6 +1205,36 @@ function doPost(e) {
       } catch (createErr) {
         Logger.log('createPlayerRecord error: ' + createErr.toString());
         return error(createErr.toString());
+      }
+    }
+
+    // ── Player Identity Phase 2: historical attach / merge / profile edit —
+    //    each is a dedicated single-object request needing a synchronous
+    //    result, same reasoning as createPlayer above. ───────────────────
+    if (!Array.isArray(parsed) && parsed && parsed._kind === 'attachHistory') {
+      try {
+        return ok(attachHistoricalRecords(parsed));
+      } catch (attachErr) {
+        Logger.log('attachHistoricalRecords error: ' + attachErr.toString());
+        return error(attachErr.toString());
+      }
+    }
+
+    if (!Array.isArray(parsed) && parsed && parsed._kind === 'mergePlayers') {
+      try {
+        return ok(mergePlayers(parsed));
+      } catch (mergeErr) {
+        Logger.log('mergePlayers error: ' + mergeErr.toString());
+        return error(mergeErr.toString());
+      }
+    }
+
+    if (!Array.isArray(parsed) && parsed && parsed._kind === 'updatePlayer') {
+      try {
+        return ok({ player: updatePlayerProfile(parsed) });
+      } catch (updateErr) {
+        Logger.log('updatePlayerProfile error: ' + updateErr.toString());
+        return error(updateErr.toString());
       }
     }
 
