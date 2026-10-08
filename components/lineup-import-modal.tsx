@@ -96,6 +96,13 @@ export function LineupImportModal({ webhookUrl, knownPlayers, replacesExisting, 
   async function handleConfirm() {
     const usable = rows.filter(r => r.name.trim() || r.number.trim());
     if (usable.length === 0) { setError('Add at least one batter first.'); return; }
+    // Rows that look like an existing player but are set to "New player" would
+    // create a duplicate if the coach just taps through — make that explicit.
+    const lookAlikes = usable.filter(r => r.name.trim() && !r.matchId && candidatesFor(r, knownPlayers).length > 0);
+    if (lookAlikes.length > 0) {
+      const names = lookAlikes.map(r => r.name.trim()).join(', ');
+      if (!confirm(`${lookAlikes.length} row${lookAlikes.length !== 1 ? 's' : ''} look similar to players you already have but will be saved as NEW players:\n\n${names}\n\nIf any of these are the same kid, tap Cancel and pick the existing player from the dropdown. Save them as new players anyway?`)) return;
+    }
     if (replacesExisting && !confirm('This replaces the current batting order with the imported lineup. Continue?')) return;
 
     setStep('saving');
@@ -177,7 +184,7 @@ export function LineupImportModal({ webhookUrl, knownPlayers, replacesExisting, 
             </button>
             {step === 'reading' && <p className="text-slate-500 text-[14px] text-center">This usually takes a few seconds.</p>}
             {error && <p className="text-red-400 text-[14px]">{error}</p>}
-            <p className="text-slate-600 text-[12px] leading-snug">
+            <p className="text-slate-400 text-[13px] leading-snug">
               The image is sent to Google&apos;s Gemini service only to read the lineup. It is not saved by this app.
             </p>
           </div>
@@ -231,10 +238,10 @@ export function LineupImportModal({ webhookUrl, knownPlayers, replacesExisting, 
                       <input value={r.name} onChange={e => updateRow(r.key, { name: e.target.value, matchId: '' })} placeholder="Name"
                         className="flex-1 min-w-0 h-10 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 px-3 outline-none focus:border-blue-500" />
                       <div className="flex flex-col flex-shrink-0">
-                        <button onClick={() => moveRow(idx, -1)} disabled={idx === 0} aria-label="Move up" className="text-slate-500 hover:text-slate-200 disabled:opacity-20 text-[12px] leading-none px-1.5 py-0.5">▲</button>
-                        <button onClick={() => moveRow(idx, 1)} disabled={idx === rows.length - 1} aria-label="Move down" className="text-slate-500 hover:text-slate-200 disabled:opacity-20 text-[12px] leading-none px-1.5 py-0.5">▼</button>
+                        <button onClick={() => moveRow(idx, -1)} disabled={idx === 0} aria-label="Move up" className="w-9 h-5 flex items-center justify-center text-slate-400 hover:text-slate-100 active:bg-slate-800 rounded disabled:opacity-20 text-[13px] leading-none">▲</button>
+                        <button onClick={() => moveRow(idx, 1)} disabled={idx === rows.length - 1} aria-label="Move down" className="w-9 h-5 flex items-center justify-center text-slate-400 hover:text-slate-100 active:bg-slate-800 rounded disabled:opacity-20 text-[13px] leading-none">▼</button>
                       </div>
-                      <button onClick={() => removeRow(r.key)} aria-label="Remove row" className="text-slate-600 hover:text-red-400 text-[22px] leading-none px-1 flex-shrink-0">×</button>
+                      <button onClick={() => removeRow(r.key)} aria-label="Remove row" className="w-9 h-10 flex items-center justify-center text-slate-500 hover:text-red-400 active:bg-slate-800 rounded text-[24px] leading-none flex-shrink-0">×</button>
                     </div>
 
                     <div className="flex items-center gap-2 pl-7">
