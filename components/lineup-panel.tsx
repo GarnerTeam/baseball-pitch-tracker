@@ -10,6 +10,7 @@ import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
 import { fetchRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
 import { fetchPlayers, createPlayer, isPlayerId } from '@/lib/players';
 import { RosterPlayer, PlayerRecord } from '@/types';
+import { LineupImportModal } from '@/components/lineup-import-modal';
 
 interface SyncStatus {
   ok: boolean;
@@ -647,6 +648,8 @@ export function LineupPanel({
   //    identity) — fetched once and filtered client-side as the coach
   //    types, exactly like the My Team / Opposing Team autocomplete. ──────
   const [knownPlayers, setKnownPlayers] = useState<PlayerRecord[]>([]);
+  // "Import lineup from photo" (screenshot / lineup card → batting order).
+  const [showLineupImport, setShowLineupImport] = useState(false);
   useEffect(() => {
     if (!state.sheetsWebhookUrl) { setKnownPlayers([]); return; }
     let cancelled = false;
@@ -1096,6 +1099,16 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
           <span className="text-slate-600 text-[18px]">{lineup.filter(p => !!p).length} batters</span>
         </div>
 
+        {/* ── Import lineup from a photo / screenshot (GameChanger, lineup card…) ── */}
+        {!readOnly && onLoadRoster && state.sheetsWebhookUrl && (
+          <button
+            onClick={() => setShowLineupImport(true)}
+            className="w-full h-9 mb-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-[15px] font-medium flex items-center justify-center gap-2"
+          >
+            <span className="text-[16px]">📷</span> Import Lineup from Photo
+          </button>
+        )}
+
         {/* ── Saved Roster: reuse a lineup across every game vs. the same team ── */}
         {!readOnly && onLoadRoster && state.sheetsWebhookUrl && opposingTeam && (
           <div className="mb-2">
@@ -1455,6 +1468,21 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       )}
 
     </div>
+
+      {/* ── Import Lineup from Photo ───────────────────────── */}
+      {showLineupImport && onLoadRoster && (
+        <LineupImportModal
+          webhookUrl={state.sheetsWebhookUrl}
+          knownPlayers={knownPlayers}
+          replacesExisting={lineup.some(p => !!p && !!p.name?.trim())}
+          onClose={() => setShowLineupImport(false)}
+          onConfirm={(imported, created) => {
+            onLoadRoster(imported);
+            if (created.length > 0) setKnownPlayers(prev => [...prev, ...created]);
+            setShowLineupImport(false);
+          }}
+        />
+      )}
 
       {/* ── Batter History Modal ────────────────────────────── */}
       {historyPlayer && (
