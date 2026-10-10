@@ -179,24 +179,31 @@ describe('Postgres store', () => {
 });
 
 describe('player backfill plan', () => {
-  it('groups unlinked batters, reuses exact existing players, and flags number changes', async () => {
+  it('groups records by the coach rule and links exactly by name, number and team', async () => {
     const pg = new PGlite();
     const db: Db = { query: async (text, params = []) => (await pg.query(text, params)).rows as never[] };
     await migrate((t: string, p?: unknown[]) => db.query(t, p), () => {});
     const existing = await store.createPlayer(db, { organizationId: 'org_a', userId: 'u1', name: 'Lee', number: '4' });
     await store.writePitches(db, [
-      pitch({ batterName: 'Sam Smith', batterNumber: '7', batterHand: 'L' }), pitch({ batterName: 'sam smith ', batterNumber: '7', batterHand: 'L' }),
-      pitch({ batterName: 'Sam Smith', batterNumber: '12' }),
-      pitch({ batterName: 'Lee', batterNumber: '4' }),
+      pitch({ batterName: 'Sam Smith', batterNumber: '7', batterHand: 'L', visitingTeam: 'Hawks' }),
+      pitch({ batterName: 'sam smith ', batterNumber: '7', batterHand: 'L', visitingTeam: 'Hawks' }),
+      pitch({ batterName: 'Sam Smith', batterNumber: '', visitingTeam: 'Hawks' }),
+      pitch({ batterName: 'Sam Smith', batterNumber: '', visitingTeam: 'Tigers' }),
+      pitch({ batterName: 'Lee', batterNumber: '4', visitingTeam: 'Hawks' }),
+      pitch({ batterName: 'U', batterNumber: '' }),
       pitch({ batterName: 'Linked', batterNumber: '1', playerId: 'PLR0099' }),
       pitch({ batterName: 'Other Org', organizationId: 'org_b' }),
     ]);
     const plan = await store.planPlayerBackfill(db, A);
-    expect(plan.groups.map(g => [g.name, g.number, g.pitchCount, g.existingPlayerId])).toEqual([
-      ['Sam Smith', '7', 2, ''], ['Lee', '4', 1, existing.id], ['Sam Smith', '12', 1, ''],
+    expect(plan.clusters.map(c => [c.playerId || c.name, c.number, c.pitchCount, c.teams])).toEqual([
+      [existing.id, '4', 1, ['Hawks']], ['Sam Smith', '7', 3, ['Hawks']], ['Sam Smith', '', 1, ['Tigers']],
     ]);
-    expect(plan.groups[0].hand).toBe('L');
-    expect(plan).toMatchObject({ toCreate: 2, toLinkToExisting: 1, pitchesToLink: 4 });
-    expect(plan.sameNameOtherNumber).toEqual([{ name: 'sam smith', numbers: ['12', '7'] }]);
+    expect(plan.clusters[1].hand).toBe('L');
+    expect(plan.skipped.map(s => s.name)).toEqual(['U']);
+
+    // exact link: blank number + team only takes that team's blank-number rows
+    const p = await store.createPlayer(db, { organizationId: 'org_a', userId: 'u1', name: 'Sam Smith', number: '7' });
+    expect((await store.attachHistory(db, A, { playerId: p.id, batterName: 'Sam Smith', batterNumber: '', exactNumber: true, visitingTeam: 'Hawks' })).attached).toBe(1);
+    expect((await store.attachHistory(db, A, { playerId: p.id, batterName: 'Sam Smith', batterNumber: '7', exactNumber: true, visitingTeam: 'hawks' })).attached).toBe(2);
   });
 });
