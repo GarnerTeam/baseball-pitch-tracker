@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/sheets/history(.*)', // history API (called by batter history modal on scout page)
   '/api/admin/import-sheet',  // checks admin session OR one-time import token itself
   '/api/admin/backfill-players', // same
+  '/api/admin/players',          // same
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
-import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite } from '@/lib/backend';
+import { scriptErrorBody } from '@/lib/apps-script';
+import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite, scriptUrlFor } from '@/lib/backend';
 import { saveRoster } from '@/lib/db/store';
 
 /**
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const url = resolveScriptUrl(searchParams.get('url'));
+    const url = scriptUrlFor(searchParams.get('url'));
     const json = await readAction(url, 'roster', { organizationId, userId }, { team });
     return NextResponse.json(json);
   } catch (err) {
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (!teamName || !Array.isArray(players) || players.length === 0) {
       return NextResponse.json({ error: 'Missing teamName or players' }, { status: 400 });
     }
-    const url = resolveScriptUrl(webhookUrl);
+    const url = scriptUrlFor(webhookUrl);
 
     const stamped = players.map((p: Record<string, unknown>) => ({
       _kind: 'roster',

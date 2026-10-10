@@ -1,7 +1,7 @@
 // Server-only: decides, per request, whether a read or write goes to the
 // Google Sheet, to Postgres, or to both (see DATA_STORE in lib/db/client.ts).
 import { after } from 'next/server';
-import { scriptGet, scriptPost } from './apps-script';
+import { resolveScriptUrl, scriptGet, scriptPost } from './apps-script';
 import { dataStore, getDb, sheetsMirrorEnabled, type Db } from './db/client';
 import * as store from './db/store';
 
@@ -29,6 +29,23 @@ export async function sheetWrite(url: string, payload: unknown): Promise<SheetWr
 
 export function mode() {
   return dataStore();
+}
+
+/** True when this request has nothing to do with the Google Sheet. */
+export function sheetsUnused(): boolean {
+  return dataStore() === 'database' && !sheetsMirrorEnabled();
+}
+
+/**
+ * The Apps Script URL for this request, or '' when the Sheet isn't used at
+ * all (database mode with SHEETS_MIRROR=off). The browser now sends the
+ * marker "app" instead of a Sheet link; older cached pages may still send
+ * a real (allowlisted) link, which is accepted.
+ */
+export function scriptUrlFor(clientUrl?: string | null): string {
+  if (sheetsUnused()) return '';
+  const u = (clientUrl ?? '').trim();
+  return resolveScriptUrl(u === 'app' ? undefined : u);
 }
 
 export function db(): Db {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
-import { readAction } from '@/lib/backend';
+import { scriptErrorBody } from '@/lib/apps-script';
+import { readAction, scriptUrlFor } from '@/lib/backend';
 
 /**
  * GET /api/sheets/games?url=<webhookUrl>
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
   try {
-    const url = resolveScriptUrl(searchParams.get('url'));
+    const url = scriptUrlFor(searchParams.get('url'));
     const json = await readAction(url, 'games', { organizationId, userId });
     return NextResponse.json(json);
   } catch (err) {

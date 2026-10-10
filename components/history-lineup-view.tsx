@@ -47,7 +47,7 @@ export function HistoryLineupView({ state }: { state: GameState }) {
     onNextBatter: NOOP, onPrevBatter: NOOP, onEndAtBat: NOOP,
     onChangePitcher: NOOP, onAddBatter: NOOP, onRemoveBatter: NOOP,
     onSetBatterAt: NOOP, onReorderBatter: NOOP, onEditPitch: NOOP,
-    onUndoLastEnd: NOOP, onSetWebhookUrl: NOOP,
+    onUndoLastEnd: NOOP,
   };
 
   if (pageCount === 0) {

@@ -302,7 +302,7 @@ export function BatterHistoryModal({
 
   useEffect(() => {
     if (!webhookUrl) {
-      setFetchError('No Google Sheets URL configured. Set it on the Lineup page first.');
+      setFetchError('History is not available right now.');
       setLoading(false);
       return;
     }
@@ -571,7 +571,7 @@ export function BatterHistoryModal({
             <p className="text-red-300 font-bold text-[18px]">Could not load history</p>
             <p className="text-red-400 text-[15px]">{fetchError}</p>
             <p className="text-slate-500 text-[13px] pt-1 border-t border-red-900">
-              Make sure Apps Script has been updated with <code className="bg-slate-800 px-1 rounded">doGet()</code> and redeployed.
+              Check your connection and try again.
             </p>
           </div>
         )}

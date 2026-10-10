@@ -706,12 +706,13 @@ export function useGame() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as GameState;
-        // Always apply the Vercel env var URL if set — overrides any stale cached value
         // Migrate: supply safe defaults for any fields added after first deploy.
         // DO NOT change the storage key — that would wipe existing game data.
         return {
           ...parsed,
-          sheetsWebhookUrl: parsed.sheetsWebhookUrl || DEFAULT_WEBHOOK_URL,
+          // Always sync through the app's server — replaces any Google Sheet
+          // link a device saved before the move to the database.
+          sheetsWebhookUrl: DEFAULT_WEBHOOK_URL,
           // Fields added in later releases — may be absent in old saves
           homeTeam:                    parsed.homeTeam                    ?? '',
           visitingTeam:                parsed.visitingTeam                ?? '',
