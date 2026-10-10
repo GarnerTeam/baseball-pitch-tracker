@@ -522,3 +522,71 @@ export async function countsByScope(db: Db) {
   );
   return { totals, byScope: rows };
 }
+
+// ── Player backfill (batters recorded before Player Identity) ─────────────────
+
+export interface BackfillGroup {
+  name: string;
+  number: string;
+  hand: string | null;
+  pitchCount: number;
+  gameCount: number;
+  /** Set when an active player with the same name and number already exists. */
+  existingPlayerId: string;
+}
+
+/**
+ * Every unlinked (name, jersey number) batter in scope, most pitches first,
+ * each matched to an existing active player with the same name and number
+ * when there is one. `sameNameOtherNumber` lists names that appear with
+ * more than one number — possibly one kid who changed jerseys — for the
+ * coach to review (and merge on the Player Profile screen if needed).
+ */
+export async function planPlayerBackfill(db: Db, scope: Scope) {
+  const groups = await db.query<{ name: string; number: string; hand: string | null; pitch_count: number; game_count: number }>(
+    `SELECT (array_agg(btrim(batter_name) ORDER BY ${PITCH_ORDER}))[1] AS name,
+            btrim(batter_number) AS number,
+            mode() WITHIN GROUP (ORDER BY NULLIF(batter_hand, '')) AS hand,
+            count(*)::int AS pitch_count,
+            count(DISTINCT NULLIF(game_id, ''))::int AS game_count
+     FROM pitches
+     WHERE ${PITCH_SCOPE} AND player_id = '' AND roster_player_id = '' AND btrim(batter_name) <> ''
+     GROUP BY lower(btrim(batter_name)), btrim(batter_number)
+     ORDER BY count(*) DESC, 1`,
+    [scope.organizationId, scope.userId],
+  );
+  const { players } = await getPlayersList(db, scope);
+  const key = (n: string, num: string) => `${n.trim().toLowerCase()}|${num.trim()}`;
+  const existing = new Map(players.map(p => [key(p.name, p.number), p.id]));
+
+  const out: BackfillGroup[] = groups.map(g => ({
+    name: g.name,
+    number: g.number,
+    hand: g.hand === 'L' || g.hand === 'R' ? g.hand : null,
+    pitchCount: Number(g.pitch_count),
+    gameCount: Number(g.game_count),
+    existingPlayerId: existing.get(key(g.name, g.number)) ?? '',
+  }));
+
+  const numbersByName = new Map<string, Set<string>>();
+  for (const g of out) {
+    const n = g.name.toLowerCase();
+    if (!numbersByName.has(n)) numbersByName.set(n, new Set());
+    numbersByName.get(n)!.add(g.number || '(none)');
+  }
+  for (const p of players) {
+    const n = p.name.trim().toLowerCase();
+    if (numbersByName.has(n)) numbersByName.get(n)!.add(p.number || '(none)');
+  }
+  const sameNameOtherNumber = [...numbersByName.entries()]
+    .filter(([, nums]) => nums.size > 1)
+    .map(([name, nums]) => ({ name, numbers: [...nums].sort() }));
+
+  return {
+    groups: out,
+    toCreate: out.filter(g => !g.existingPlayerId).length,
+    toLinkToExisting: out.filter(g => g.existingPlayerId).length,
+    pitchesToLink: out.reduce((s, g) => s + g.pitchCount, 0),
+    sameNameOtherNumber,
+  };
+}
