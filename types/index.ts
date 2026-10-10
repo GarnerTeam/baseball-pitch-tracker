@@ -150,6 +150,10 @@ export interface PlayerRecord {
   notes: string;
   verified: boolean;
   isActive: boolean;
+  /** Teams he has batted for, most recent first (then Saved Rosters he is
+   *  on). Shown under his name in the lineup suggestions. Empty when he has
+   *  no pitches yet; absent from older servers. */
+  teams?: string[];
 }
 
 

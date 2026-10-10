@@ -20,6 +20,7 @@ import {
   getAtBatResult,
 } from '@/lib/game-engine';
 import { syncQueueToSheets, DEFAULT_WEBHOOK_URL } from '@/lib/sheets';
+import { normalizeGameState, saveGameSnapshot, snapshotOf, pitchCountOf, atBatCountOf } from '@/lib/games';
 import { isRosterId } from '@/lib/roster';
 import { isPlayerId } from '@/lib/players';
 
@@ -105,7 +106,8 @@ type GameAction =
   | { type: 'UNDO_LAST_END' }
   | { type: 'REORDER_BATTERS'; fromIdx: number; toIdx: number }
   | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> }
-  | { type: 'LOAD_ROSTER'; players: Player[] };
+  | { type: 'LOAD_ROSTER'; players: Player[] }
+  | { type: 'RESUME_GAME'; game: GameState; message: string };
 
 function resetPendingPitch(state: GameState) {
   return {
@@ -682,6 +684,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'NEW_GAME':
       return { ...createInitialState(), sheetsWebhookUrl: state.sheetsWebhookUrl, pitcherHistory: [] };
 
+    case 'RESUME_GAME':
+      // Replaces the live game with a saved one (see lib/games.ts). The
+      // caller has already made sure the game being left is saved.
+      return {
+        ...normalizeGameState(action.game),
+        phase: 'pitching',
+        activeTab: 'pitch',
+        notification: { message: action.message, type: 'info' },
+      };
+
     case 'SET_BASE':
       return { ...state, baseState: { ...state.baseState, [action.base]: action.occupied } };
 
@@ -699,32 +711,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+export interface EndGameResult {
+  ok: boolean;
+  gameId: string;
+  homeTeam: string;
+  visitingTeam: string;
+  /** Pitches in the game on this device. */
+  pitches: number;
+  atBats: number;
+  /** Pitches the server has stored for this game. */
+  storedPitches: number;
+  error?: string;
+}
+
 export function useGame() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () => {
     if (typeof window === 'undefined') return createInitialState();
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as GameState;
-        // Migrate: supply safe defaults for any fields added after first deploy.
+        // Fills in fields added in later releases (lib/games.ts).
         // DO NOT change the storage key — that would wipe existing game data.
-        return {
-          ...parsed,
-          // Always sync through the app's server — replaces any Google Sheet
-          // link a device saved before the move to the database.
-          sheetsWebhookUrl: DEFAULT_WEBHOOK_URL,
-          // Fields added in later releases — may be absent in old saves
-          homeTeam:                    parsed.homeTeam                    ?? '',
-          visitingTeam:                parsed.visitingTeam                ?? '',
-          baseState:                   parsed.baseState                   ?? { first: false, second: false, third: false },
-          outsCount:                   parsed.outsCount                   ?? 0,
-          batterHand:                  parsed.batterHand                  ?? null,
-          overlayEnabled:              parsed.overlayEnabled              ?? true,
-          syncQueue:                   parsed.syncQueue                   ?? [],
-          pitcherHistory:              parsed.pitcherHistory              ?? [],
-          lastCompletedAtBatSnapshot:  parsed.lastCompletedAtBatSnapshot  ?? undefined,
-          notification:                parsed.notification                ?? null,
-        };
+        return normalizeGameState(JSON.parse(saved) as GameState);
       }
     } catch {}
     return createInitialState();
@@ -741,6 +749,11 @@ export function useGame() {
   // would cause the same pitch to be written to Sheets multiple times.
   const isSyncing = useRef(false);
   const [syncStatus, setSyncStatus] = useState<{ ok: boolean; message: string; ts: number } | null>(null);
+  // Bumped to retry an upload that failed (the effect below otherwise only
+  // runs when a pitch is added).
+  const [syncNonce, setSyncNonce] = useState(0);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     if (state.syncQueue.length === 0 || !state.sheetsWebhookUrl || isSyncing.current) return;
@@ -765,7 +778,126 @@ export function useGame() {
       console.error('[sync] network error:', err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.syncQueue.length, state.sheetsWebhookUrl]);
+  }, [state.syncQueue.length, state.sheetsWebhookUrl, syncNonce]);
+
+  // Retry waiting pitches every 15s and as soon as the device is back online.
+  const hasQueue = state.syncQueue.length > 0;
+  useEffect(() => {
+    if (!hasQueue) return;
+    const retry = () => setSyncNonce(n => n + 1);
+    const t = setInterval(retry, 15_000);
+    window.addEventListener('online', retry);
+    return () => { clearInterval(t); window.removeEventListener('online', retry); };
+  }, [hasQueue]);
+
+  // ── Autosave the whole game to the cloud (Resume Game on any device) ──
+  const [gameSave, setGameSave] = useState<{ ok: boolean; at: number; message?: string } | null>(null);
+  const lastSavedKey = useRef<string>('');
+  const pendingSave = useRef<GameState | null>(null);
+  useEffect(() => {
+    if (state.phase === 'setup') { pendingSave.current = null; return; }
+    // Nothing entered yet — not worth listing under "Continue a Game".
+    if (pitchCountOf(state) === 0 && state.lineup.every(p => !p.name.trim()) && !state.pitcher.name.trim()) return;
+    const key = JSON.stringify(snapshotOf(state));
+    if (key === lastSavedKey.current) return;
+    pendingSave.current = state;
+    const t = setTimeout(() => {
+      const snap = pendingSave.current;
+      if (!snap) return;
+      saveGameSnapshot(snap, 'active').then(() => {
+        lastSavedKey.current = key;
+        if (pendingSave.current === snap) pendingSave.current = null;
+        setGameSave({ ok: true, at: Date.now() });
+      }).catch(err => {
+        setGameSave({ ok: false, at: Date.now(), message: err instanceof Error ? err.message : String(err) });
+      });
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  // Save right away if the app is closed or put in the background mid-wait.
+  useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState !== 'hidden' || !pendingSave.current) return;
+      saveGameSnapshot(pendingSave.current, 'active', { keepalive: true }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', flush);
+    return () => document.removeEventListener('visibilitychange', flush);
+  }, []);
+
+  /** Uploads any waiting pitches now. Resolves to an error message, or null when none are left. */
+  const uploadNow = useCallback(async (): Promise<string | null> => {
+    for (let i = 0; i < 60 && isSyncing.current; i++) await new Promise(r => setTimeout(r, 250));
+    const queue = stateRef.current.syncQueue;
+    if (queue.length === 0) return null;
+    isSyncing.current = true;
+    try {
+      const { synced, error } = await syncQueueToSheets(stateRef.current.sheetsWebhookUrl || DEFAULT_WEBHOOK_URL, queue);
+      if (synced > 0) dispatch({ type: 'MARK_SYNCED', pitchIds: queue.slice(0, synced).map(p => p.id) });
+      if (synced < queue.length) return error ?? 'Some pitches did not upload';
+      return null;
+    } finally {
+      isSyncing.current = false;
+    }
+  }, []);
+
+  /**
+   * End Game: upload every waiting pitch, save the final game, confirm the
+   * pitches are stored, then clear this device for the next game. On any
+   * failure nothing is cleared.
+   */
+  const endGame = useCallback(async (): Promise<EndGameResult> => {
+    const game = stateRef.current;
+    const summary = {
+      gameId: game.id, homeTeam: game.homeTeam, visitingTeam: game.visitingTeam,
+      pitches: pitchCountOf(game), atBats: atBatCountOf(game),
+    };
+    try {
+      const uploadError = await uploadNow();
+      if (uploadError) return { ok: false, ...summary, storedPitches: 0, error: `Pitches could not be uploaded: ${uploadError}` };
+      const final = { ...stateRef.current, syncQueue: [] };
+      const saved = await saveGameSnapshot(final, 'final');
+      if (saved.storedPitches < summary.pitches) {
+        return { ok: false, ...summary, storedPitches: saved.storedPitches,
+          error: `Only ${saved.storedPitches} of ${summary.pitches} pitches are stored so far.` };
+      }
+      pendingSave.current = null;
+      lastSavedKey.current = '';
+      dispatch({ type: 'NEW_GAME' });
+      return { ok: true, ...summary, storedPitches: saved.storedPitches };
+    } catch (err) {
+      return { ok: false, ...summary, storedPitches: 0, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, [uploadNow]);
+
+  /**
+   * Switches to a saved game. The game being left (if it has anything in
+   * it) is saved first so it can be resumed later; refuses while its pitches
+   * are still uploading.
+   */
+  const resumeGame = useCallback(async (game: GameState, opts: { reopen?: boolean; rebuilt?: boolean } = {}): Promise<string | null> => {
+    const current = stateRef.current;
+    if (current.phase !== 'setup' && current.id !== game.id && pitchCountOf(current) + current.lineup.length > 0) {
+      const uploadError = await uploadNow();
+      if (uploadError) return `Your current game still has pitches waiting to upload (${uploadError}). Check your connection and try again.`;
+      try {
+        await saveGameSnapshot({ ...stateRef.current, syncQueue: [] }, 'active');
+      } catch (err) {
+        return `Couldn't save your current game first: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+    try {
+      await saveGameSnapshot(game, 'active', { reopen: opts.reopen ?? true });
+    } catch { /* autosave will retry */ }
+    pendingSave.current = null;
+    lastSavedKey.current = JSON.stringify(snapshotOf({ ...normalizeGameState(game), phase: 'pitching', activeTab: 'pitch', notification: null }));
+    const label = `${game.homeTeam || 'Home'} vs ${game.visitingTeam || 'Away'}`;
+    dispatch({
+      type: 'RESUME_GAME', game,
+      message: opts.rebuilt ? `Resumed ${label} — check outs & runners` : `Resumed ${label}`,
+    });
+    return null;
+  }, [uploadNow]);
 
   // Auto-dismiss notification
   useEffect(() => {
@@ -778,6 +910,9 @@ export function useGame() {
   return {
     state,
     syncStatus,
+    gameSave,
+    endGame,
+    resumeGame,
     actions: {
       startGame: useCallback((homeTeam: string, visitingTeam: string) =>
         dispatch({ type: 'START_GAME', homeTeam, visitingTeam }), []),

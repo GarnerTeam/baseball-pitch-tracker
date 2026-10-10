@@ -14,6 +14,8 @@ import { GameLog } from '@/components/game-log';
 import { NotificationToast } from '@/components/notification-toast';
 import { PastGamesBrowser } from '@/components/past-games-browser';
 import { PlayerProfileScreen } from '@/components/player-profile-screen';
+import { EndGameModal } from '@/components/end-game-modal';
+import { loadResumableGame, loadReadOnlyGame, pitchCountOf, atBatCountOf } from '@/lib/games';
 import { useOrganization, useUser } from '@clerk/nextjs';
 
 const NAV_TABS = [
@@ -27,7 +29,7 @@ const NAV_TABS = [
 const HISTORY_NAV_TABS = NAV_TABS.filter(t => t.id !== 'pitch');
 
 export default function App() {
-  const { state, actions } = useGame();
+  const { state, actions, syncStatus, gameSave, endGame, resumeGame } = useGame();
   // Keeps --app-vh in sync with the real live viewport — fixes a WebKit
   // lag where 100dvh doesn't recompute fast enough after an in-app screen
   // swap (e.g. Past Games -> a specific game), leaving fixed header/nav
@@ -48,6 +50,59 @@ export default function App() {
   const { user } = useUser();
   const ownerId = organization?.id ?? user?.id ?? '';
 
+  // End Game — the numbers are captured when it opens, because the live
+  // game is cleared as soon as it's saved.
+  const [endInfo, setEndInfo] = useState<{ pitches: number; atBats: number; waiting: number; homeTeam: string; visitingTeam: string } | null>(null);
+  function openEndGame() {
+    setEndInfo({
+      pitches: pitchCountOf(state), atBats: atBatCountOf(state), waiting: state.syncQueue.length,
+      homeTeam: state.homeTeam, visitingTeam: state.visitingTeam,
+    });
+  }
+
+  async function viewGame(gameId: string) {
+    try {
+      const gs = await loadReadOnlyGame(gameId);
+      if (gs) { setHistoryState(gs); setHistoryTab('lineup'); }
+    } catch { /* stays on the start screen */ }
+  }
+
+  /** Resume from the start screen or Past Games. Resolves to an error message or null. */
+  async function handleResume(gameId: string, knownStatus = ''): Promise<string | null> {
+    if (state.phase !== 'setup' && gameId === state.id) {
+      setShowPastGames(false);
+      setHistoryState(null);
+      return null;
+    }
+    let loaded;
+    try {
+      loaded = await loadResumableGame(gameId);
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    const status = knownStatus || loaded.status;
+    if (status === 'final' && !confirm('This game was ended. Reopen it and keep tracking?')) return null;
+    if (loaded.rebuilt && !confirm('This game was recorded before games were saved, so it will be rebuilt from its pitches. Check the outs, runners and current batter before you continue.')) return null;
+    if (state.phase !== 'setup' && pitchCountOf(state) + state.lineup.filter(p => p.name.trim()).length > 0
+        && !confirm(`Switch games? ${state.homeTeam || 'Home'} vs ${state.visitingTeam || 'Away'} is saved and stays under "Continue a Game" on the start screen.`)) {
+      return null;
+    }
+    const err = await resumeGame(loaded.state, { reopen: true, rebuilt: loaded.rebuilt });
+    if (err) return err;
+    setShowPastGames(false);
+    setHistoryState(null);
+    return null;
+  }
+
+  const endModal = endInfo && (
+    <EndGameModal
+      {...endInfo}
+      onEnd={endGame}
+      onClose={() => setEndInfo(null)}
+      onViewGame={(gameId) => { setEndInfo(null); void viewGame(gameId); }}
+    />
+  );
+
   if (showPlayers) {
     return (
       <PlayerProfileScreen
@@ -64,6 +119,7 @@ export default function App() {
         webhookUrl={state.sheetsWebhookUrl}
         currentGameId={state.id}
         onClose={() => setShowPastGames(false)}
+        onResumeGame={handleResume}
         onSelectGame={(gs) => {
           setHistoryState(gs);
           setHistoryTab('lineup');
@@ -121,7 +177,14 @@ export default function App() {
     );
   }
 
-  if (state.phase === 'setup') return <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onViewPastGames={() => setShowPastGames(true)} />;
+  if (state.phase === 'setup') {
+    return (
+      <>
+        <SetupScreen onStart={actions.startGame} webhookUrl={state.sheetsWebhookUrl} onViewPastGames={() => setShowPastGames(true)} onResume={(id) => handleResume(id)} />
+        {endModal}
+      </>
+    );
+  }
   if (state.phase === 'hit-mode') {
     return (
       <div className="fixed inset-0 h-dvh pt-safe bg-slate-950 z-50">
@@ -138,7 +201,7 @@ export default function App() {
           <PitchScreen state={state} onSetPitchType={actions.setPitchType} onSetLocation={actions.setLocation} onSetSwing={actions.setSwing} onSetContact={actions.setContact} onRecordPitch={actions.recordPitch} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onUndoPitch={actions.undoPitch} onSetBatterHand={actions.setBatterHand} onToggleOverlay={actions.toggleOverlay} onSetOverlayFilter={actions.setOverlayFilter} onTabChange={actions.setTab} onSetBase={actions.setBase} onSetOuts={actions.setOuts} onHitByPitch={actions.hitByPitch} />
         )}
         {state.activeTab === 'lineup' && (
-          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onReorderBatter={actions.reorderBatter} onEditPitch={actions.editPitch} onLoadRoster={actions.loadRoster} />
+          <LineupPanel state={state} onNextBatter={actions.nextBatter} onPrevBatter={actions.prevBatter} onEndAtBat={actions.endAtBat} onChangePitcher={actions.changePitcher} onAddBatter={actions.addBatter} onRemoveBatter={actions.removeBatter} onSetBatterAt={actions.setBatterAt} onUndoLastEnd={actions.undoLastEnd} onReorderBatter={actions.reorderBatter} onEditPitch={actions.editPitch} onLoadRoster={actions.loadRoster} syncStatus={syncStatus} gameSave={gameSave} onEndGame={openEndGame} />
         )}
         {state.activeTab === 'analytics' && <AnalyticsScreen state={state} />}
         {state.activeTab === 'log' && <GameLog state={state} />}
@@ -158,9 +221,9 @@ export default function App() {
           <span className="text-[22px] leading-none">👤</span>
           <span className="text-[12px] font-medium">Players</span>
         </button>
-        <button onClick={() => { if (confirm('Start a new game? Data will be cleared.')) actions.newGame(); }} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-slate-500 hover:text-red-400 transition-colors">
-          <span className="text-[22px] leading-none">🔄</span>
-          <span className="text-[12px] font-medium">New</span>
+        <button onClick={openEndGame} className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-rose-400 hover:text-rose-300 transition-colors">
+          <span className="text-[22px] leading-none">🏁</span>
+          <span className="text-[11px] font-semibold whitespace-nowrap">End Game</span>
         </button>
         <div className="flex-1 flex flex-col items-center justify-center py-2 gap-0.5">
           <UserButton
@@ -177,6 +240,7 @@ export default function App() {
           <span className="text-[12px] font-medium text-slate-500">Account</span>
         </div>
       </nav>
+      {endModal}
     </div>
   );
 }

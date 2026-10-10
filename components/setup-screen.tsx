@@ -1,11 +1,97 @@
 'use client';
 import { UserButton } from '@clerk/nextjs';
 import { useState, useEffect, useRef } from 'react';
+import { fetchActiveGames, markGameEnded, SavedGameSummary } from '@/lib/games';
 
 interface SetupScreenProps {
   onStart: (homeTeam: string, visitingTeam: string) => void;
   webhookUrl: string;
   onViewPastGames: () => void;
+  /** Loads and switches to a saved game; resolves to an error message or null. */
+  onResume: (gameId: string) => Promise<string | null>;
+}
+
+function whenLabel(iso: string): string {
+  const d = new Date(iso);
+  if (!iso || isNaN(d.getTime())) return '';
+  const today = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Today ${time}`;
+  const y = new Date(today); y.setDate(today.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Games that were started but not ended with End Game — on this device or
+ * any other signed into the same account. Tap Resume to pick up exactly
+ * where it left off.
+ */
+function ContinueGames({ onResume }: { onResume: (gameId: string) => Promise<string | null> }) {
+  const [games, setGames] = useState<SavedGameSummary[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchActiveGames().then(g => { if (!cancelled) setGames(g); }).catch(() => { /* list is optional */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (games.length === 0) return null;
+
+  async function resume(gameId: string) {
+    setBusy(gameId);
+    setError(null);
+    const err = await onResume(gameId);
+    if (err) { setError(err); setBusy(null); }
+  }
+
+  async function dismiss(g: SavedGameSummary) {
+    if (!confirm(`Mark ${g.homeTeam || 'Home'} vs ${g.visitingTeam || 'Away'} as ended? Its pitches stay saved in Past Games.`)) return;
+    try {
+      await markGameEnded(g.gameId);
+      setGames(list => list.filter(x => x.gameId !== g.gameId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="bg-amber-950/30 rounded-2xl border border-amber-700/70 overflow-hidden">
+      <p className="px-4 pt-3 pb-2 text-[16px] font-bold uppercase tracking-widest text-amber-300">▶ Continue a Game</p>
+      {games.slice(0, 5).map(g => (
+        <div key={g.gameId} className="flex items-center gap-2 px-4 py-2.5 border-t border-amber-900/50">
+          <div className="flex-1 min-w-0">
+            <p className="text-[17px] font-semibold truncate">
+              <span className="text-emerald-300">{g.homeTeam || 'Home'}</span>
+              <span className="text-slate-500 mx-1">vs</span>
+              <span className="text-blue-300">{g.visitingTeam || 'Away'}</span>
+            </p>
+            <p className="text-slate-400 text-[13px]">
+              {g.pitchCount} pitch{g.pitchCount === 1 ? '' : 'es'}{whenLabel(g.updatedAt) && <> · {whenLabel(g.updatedAt)}</>}
+            </p>
+          </div>
+          <button
+            onClick={() => resume(g.gameId)}
+            disabled={busy !== null}
+            className="px-4 h-10 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[16px] font-bold disabled:opacity-50 flex-shrink-0"
+          >
+            {busy === g.gameId ? '…' : 'Resume'}
+          </button>
+          <button
+            onClick={() => dismiss(g)}
+            disabled={busy !== null}
+            title="Mark as ended"
+            className="w-9 h-10 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 text-[18px] flex-shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {error && <p className="px-4 pb-3 text-red-300 text-[13px]">{error}</p>}
+    </div>
+  );
 }
 
 /**
@@ -72,7 +158,7 @@ function TeamNameInput({
   );
 }
 
-export function SetupScreen({ onStart, webhookUrl, onViewPastGames }: SetupScreenProps) {
+export function SetupScreen({ onStart, webhookUrl, onViewPastGames, onResume }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
   const [knownTeams, setKnownTeams] = useState<string[]>([]);
@@ -122,6 +208,8 @@ export function SetupScreen({ onStart, webhookUrl, onViewPastGames }: SetupScree
           <h1 className="text-[39px] font-bold tracking-tight">On the Bump</h1>
           <p className="text-slate-400 text-[18px] mt-1">Coach's pitch tracking tool</p>
         </div>
+
+        <ContinueGames onResume={onResume} />
 
         {/* ── Team Entry Card ── */}
         {/* overflow-visible (not hidden) — the Opposing Team autocomplete

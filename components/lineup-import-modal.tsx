@@ -259,7 +259,7 @@ export function LineupImportModal({ webhookUrl, knownPlayers, replacesExisting, 
                           <option value="">{ambiguous ? '⚠ Several match — choose one' : '✚ New player'}</option>
                           {cands.map(p => (
                             <option key={p.id} value={p.id}>
-                              {p.name}{p.number ? ` (#${p.number})` : ''} · {p.pitchesSeen} pitches
+                              {p.name}{p.number ? ` (#${p.number})` : ''}{p.teams?.[0] ? ` · ${p.teams[0]}` : ''} · {p.pitchesSeen} pitches
                             </option>
                           ))}
                         </select>
