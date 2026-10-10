@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptGet, scriptPost, scriptErrorBody } from '@/lib/apps-script';
+import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
+import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite } from '@/lib/backend';
+import { saveRoster } from '@/lib/db/store';
 
 /**
  * GET /api/sheets/roster?url=<webhookUrl>&team=<teamName>
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = resolveScriptUrl(searchParams.get('url'));
-    const json = await scriptGet(url, { action: 'roster', team, organizationId, userId });
+    const json = await readAction(url, 'roster', { organizationId, userId }, { team });
     return NextResponse.json(json);
   } catch (err) {
     const { body, status } = scriptErrorBody(err);
@@ -66,25 +68,16 @@ export async function POST(req: NextRequest) {
       hand: p.hand ?? '',
     }));
 
-    const { status, text } = await scriptPost(url, stamped);
+    if (mode() === 'database') {
+      await saveRoster(db(), stamped);
+      mirrorToSheet('roster', url, stamped);
+      return NextResponse.json({ saved: stamped.length });
+    }
 
-    // 405 after execution is the normal Apps Script response — doPost() ran;
-    // only the redirect delivery hop refuses the repeated POST.
-    if (status === 405) {
-      return NextResponse.json({ saved: stamped.length });
-    }
-    if (status >= 200 && status < 300) {
-      let body: Record<string, unknown> = {};
-      try { body = JSON.parse(text); } catch { /* non-JSON 2xx — still success */ }
-      if (body.status === 'error') {
-        return NextResponse.json({ error: body.message }, { status: 500 });
-      }
-      return NextResponse.json({ saved: stamped.length });
-    }
-    return NextResponse.json(
-      { error: `Unexpected status ${status}: ${text.slice(0, 200)}` },
-      { status: 502 },
-    );
+    const r = await sheetWrite(url, stamped);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    if (mode() === 'dual') await mirror('roster', () => saveRoster(db(), stamped));
+    return NextResponse.json({ saved: stamped.length });
   } catch (err) {
     const { body, status } = scriptErrorBody(err);
     return NextResponse.json(body, { status });

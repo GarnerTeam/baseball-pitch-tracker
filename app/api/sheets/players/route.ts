@@ -1,42 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptGet, scriptPost, scriptErrorBody } from '@/lib/apps-script';
+import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
+import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite } from '@/lib/backend';
+import * as store from '@/lib/db/store';
 
 /**
- * GET /api/sheets/players?url=<webhookUrl>
- * Returns every player in the coach's persistent batter database (scoped to
- * their account) — the full list, not a per-keystroke search — so the
- * Lineup tab's name autocomplete can filter client-side exactly like the
- * existing My Team / Opposing Team autocomplete. Dual-mode auth like
- * /api/sheets/roster: a real Clerk session always wins over any
- * client-supplied `owner` param (only relevant for unauthenticated Scout
- * contexts).
+ * GET /api/sheets/players?url=<webhookUrl>[&type=unlinked]
+ * Every active player in the coach's organization (the Lineup tab filters
+ * it client-side for autocomplete), or with type=unlinked the distinct
+ * (batterName, batterNumber) combos that have no player id yet (Player
+ * Profile → "Attach historical records"). Dual-mode auth: a real Clerk
+ * session always wins over a client-supplied `owner`.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  // ?type=unlinked powers the Player Profile "Attach historical records"
-  // screen — distinct (batterName, batterNumber) combos with no playerId
-  // yet, scoped to this organization. Default (no type) returns the full
-  // active player list, as before.
   const type = searchParams.get('type') ?? 'players';
 
   const { userId: sessionUserId, orgId: sessionOrgId } = await auth();
   const ownerParam = searchParams.get('owner') ?? '';
-  // Players are scoped to the Organization, not the individual coach — any
-  // authorized teammate in the same org sees the same batter database.
   const organizationId = sessionOrgId || sessionUserId || ownerParam;
+  const userId = sessionUserId || ownerParam;
 
   if (!organizationId) {
     return NextResponse.json({ error: 'Missing owner — no session and no owner parameter provided' }, { status: 400 });
   }
 
   try {
-    const webhookUrl = resolveScriptUrl(searchParams.get('url'));
-    if (type === 'unlinked') {
-      const json = await scriptGet(webhookUrl, { action: 'unlinkedBatters', organizationId, userId: sessionUserId ?? '' });
-      return NextResponse.json(json);
-    }
-    const json = await fetchPlayersFromScript(webhookUrl, organizationId, sessionUserId || ownerParam);
+    const url = resolveScriptUrl(searchParams.get('url'));
+    const json = await readAction(url, type === 'unlinked' ? 'unlinkedBatters' : 'players', { organizationId, userId });
     return NextResponse.json(json);
   } catch (err) {
     const { body, status } = scriptErrorBody(err);
@@ -44,45 +35,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
-async function fetchPlayersFromScript(webhookUrl: string, organizationId: string, userId: string): Promise<Record<string, unknown>> {
-  return scriptGet(webhookUrl, { action: 'players', organizationId, userId });
-}
-
 /**
  * POST /api/sheets/players
- * Body: { webhookUrl, name, number, hand }
- * Creates a brand-new player in the persistent database and returns the
- * created record, including the backend-generated permanent Player ID
- * ("PLR0001" style). Unlike pitch syncing, this is a synchronous
- * request/response — the caller needs the generated ID back immediately to
- * tag it onto the lineup slot and every pitch recorded against it. Every
- * write is stamped with the AUTHENTICATED user's id server-side — never
- * trust a client-supplied userId here, same rule as every other write route.
- */
-/**
- * POST /api/sheets/players
- * Body: { webhookUrl, action?, ... }
- * `action` dispatches to one of four write kinds (default 'create' for
- * backward compatibility with the original Lineup-tab autocomplete):
+ * Body: { webhookUrl, action?, ... } — `action` picks the write:
  *
- *   action=create  { name, number, hand }
- *     Creates a brand-new player, returns the generated Player ID.
+ *   create (default) { name, number, hand }  → { player }   new PLR id
+ *   attach  { playerId, batterName, batterNumber? }        → { attached }
+ *   merge   { sourcePlayerId, targetPlayerId }             → { merged, … }
+ *   update  { playerId, patch: { name?, number?, hand?, notes?, verified?, isActive? } } → { player }
  *
- *   action=attach  { playerId, batterName, batterNumber? }
- *     Phase 2: attaches every unlinked historical Pitches row matching
- *     (batterName, batterNumber) in this organization to playerId.
- *
- *   action=merge  { sourcePlayerId, targetPlayerId }
- *     Phase 2: merges a duplicate player into a primary one — reassigns
- *     all Pitches/Rosters rows, deactivates (never deletes) the source.
- *
- *   action=update  { playerId, patch: { name?, number?, hand?, notes?, verified?, isActive? } }
- *     Phase 2: edits an existing player's profile fields.
- *
- * Every write is stamped with the AUTHENTICATED user's organization (or
- * personal id, for solo coaches) server-side — never trust a
- * client-supplied organizationId/userId here, same rule as every other
- * write route.
+ * Every write is stamped with the AUTHENTICATED user's organization —
+ * never a client-supplied one.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -90,119 +53,74 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-    // Player identity belongs to the coach's Organization (shared batter
-    // intelligence), not their personal account — falls back to userId
-    // for solo coaches with no Organization set up yet.
     const organizationId = orgId || userId;
+    const scope = { organizationId, userId };
 
     const body = await req.json();
     const { action = 'create' } = body as { action?: string };
-    const webhookUrl = resolveScriptUrl((body as { webhookUrl?: string }).webhookUrl);
+    const url = resolveScriptUrl((body as { webhookUrl?: string }).webhookUrl);
 
     if (action === 'attach') {
-      const { playerId, batterName, batterNumber } = body as { playerId?: string; batterName?: string; batterNumber?: string };
-      const trimmedPlayerId = String(playerId ?? '').trim();
-      const trimmedBatterName = String(batterName ?? '').trim();
-      if (!trimmedPlayerId || !trimmedBatterName) {
+      const playerId = String(body.playerId ?? '').trim();
+      const batterName = String(body.batterName ?? '').trim();
+      const batterNumber = String(body.batterNumber ?? '').trim();
+      if (!playerId || !batterName) {
         return NextResponse.json({ error: 'Missing playerId or batterName' }, { status: 400 });
       }
-      const payload = {
-        _kind: 'attachHistory', organizationId, userId,
-        playerId: trimmedPlayerId, batterName: trimmedBatterName, batterNumber: String(batterNumber ?? '').trim(),
-      };
-      return handleSynchronousWrite(webhookUrl, payload, 'attached');
+      const payload = { _kind: 'attachHistory', organizationId, userId, playerId, batterName, batterNumber };
+      return synchronousWrite(url, payload, 'attached',
+        () => store.attachHistory(db(), scope, { playerId, batterName, batterNumber }));
     }
 
     if (action === 'merge') {
-      const { sourcePlayerId, targetPlayerId } = body as { sourcePlayerId?: string; targetPlayerId?: string };
-      const src = String(sourcePlayerId ?? '').trim();
-      const tgt = String(targetPlayerId ?? '').trim();
+      const src = String(body.sourcePlayerId ?? '').trim();
+      const tgt = String(body.targetPlayerId ?? '').trim();
       if (!src || !tgt) {
         return NextResponse.json({ error: 'Missing sourcePlayerId or targetPlayerId' }, { status: 400 });
       }
       const payload = { _kind: 'mergePlayers', organizationId, userId, sourcePlayerId: src, targetPlayerId: tgt };
-      return handleSynchronousWrite(webhookUrl, payload, 'merged');
+      return synchronousWrite(url, payload, 'merged', () => store.mergePlayers(db(), scope, src, tgt));
     }
 
     if (action === 'update') {
-      const { playerId, patch } = body as { playerId?: string; patch?: Record<string, unknown> };
-      const trimmedPlayerId = String(playerId ?? '').trim();
-      if (!trimmedPlayerId || !patch || typeof patch !== 'object') {
+      const playerId = String(body.playerId ?? '').trim();
+      const patch = body.patch as Record<string, unknown> | undefined;
+      if (!playerId || !patch || typeof patch !== 'object') {
         return NextResponse.json({ error: 'Missing playerId or patch' }, { status: 400 });
       }
-      const payload = { _kind: 'updatePlayer', organizationId, userId, playerId: trimmedPlayerId, patch };
-      return handleSynchronousWrite(webhookUrl, payload, 'player');
+      const payload = { _kind: 'updatePlayer', organizationId, userId, playerId, patch };
+      return synchronousWrite(url, payload, 'player',
+        async () => ({ player: await store.updatePlayer(db(), scope, playerId, patch) }));
     }
 
-    // ── action === 'create' (default, original behavior) ──
-    const { name, number, hand } = body as { name?: string; number?: string; hand?: string };
-    const trimmedName = String(name ?? '').trim();
-    const trimmedNumber = String(number ?? '').trim();
-
-    if (!trimmedName) {
+    // ── create ──
+    const name = String(body.name ?? '').trim();
+    const number = String(body.number ?? '').trim();
+    const hand = String(body.hand ?? '');
+    if (!name) {
       return NextResponse.json({ error: 'Missing name' }, { status: 400 });
     }
 
-    const payload = {
-      _kind: 'createPlayer',
-      organizationId,
-      userId,
-      name: trimmedName,
-      number: trimmedNumber,
-      hand: hand ?? '',
-    };
-
-    const { status, text } = await scriptPost(webhookUrl, payload);
-
-    if (status >= 200 && status < 300) {
-      let respBody: Record<string, unknown> = {};
-      try { respBody = JSON.parse(text); } catch {
-        return NextResponse.json({ error: `Apps Script returned non-JSON: ${text.slice(0, 300)}` }, { status: 502 });
-      }
-      if (respBody.status === 'error') {
-        return NextResponse.json({ error: respBody.message }, { status: 500 });
-      }
-      if (respBody.player) {
-        return NextResponse.json({ player: respBody.player });
-      }
-      // Fall through to the 405-style recovery below — doGet/doPost on this
-      // webhook sometimes answers with a 2xx that has no usable body either.
+    if (mode() === 'database') {
+      const player = await store.createPlayer(db(), { organizationId, userId, name, number, hand });
+      // The Sheet copy keeps the same PLR id (see createPlayerRecord).
+      mirrorToSheet('createPlayer', url, { _kind: 'createPlayer', organizationId, userId, name, number, hand, playerId: player.id });
+      return NextResponse.json({ player });
     }
 
-    // Known Apps Script web-app quirk: doPost() can run and persist the row
-    // successfully, but the final redirect hop answers 405 with no body —
-    // the write happened, we just can't read its return value directly.
-    // Since player creation (unlike pitch/roster syncing) MUST hand the
-    // caller back the backend-generated Player ID, recover by re-fetching
-    // the full player list and picking out the record we just created
-    // (exact name+number match, most recently created one if there are
-    // several, which only happens if this exact name/number pair was
-    // created before — astronomically unlikely to pick the wrong row).
-    if (status === 405 || (status >= 200 && status < 300)) {
-      try {
-        const listJson = await fetchPlayersFromScript(webhookUrl, organizationId, userId);
-        const players = (listJson.players as Array<Record<string, unknown>> | undefined) ?? [];
-        const candidates = players.filter(p =>
-          String(p.name ?? '').trim().toLowerCase() === trimmedName.toLowerCase() &&
-          String(p.number ?? '').trim() === trimmedNumber
-        );
-        const created = candidates[candidates.length - 1];
-        if (created) {
-          return NextResponse.json({ player: created });
-        }
-      } catch {
-        // fall through to the error below
-      }
+    const player = await createPlayerInSheet(url, { organizationId, userId, name, number, hand });
+    if (!player) {
       return NextResponse.json(
         { error: 'Player may have been created, but the server did not confirm it. Please check the autocomplete list and try again.' },
-        { status: 502 }
+        { status: 502 },
       );
     }
-
-    return NextResponse.json(
-      { error: `Unexpected status ${status}: ${text.slice(0, 200)}` },
-      { status: 502 }
-    );
+    if (mode() === 'dual') {
+      await mirror('createPlayer', () => store.createPlayer(db(), {
+        organizationId, userId, name, number, hand, id: String(player.id),
+      }));
+    }
+    return NextResponse.json({ player });
   } catch (err) {
     const { body, status } = scriptErrorBody(err);
     return NextResponse.json(body, { status });
@@ -210,40 +128,48 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Shared synchronous-write handler for the Phase 2 actions (attach / merge /
- * update) — same 405-empty-body quirk as createPlayer, but since these
- * don't need a freshly-generated id back (the id was already known by the
- * caller), the 405 recovery is simpler: the write already executed
- * server-side by the time the redirect chain answers 405, so we just
- * acknowledge success rather than needing to re-derive a result.
+ * Creates a player in the Sheet and returns the record with its new PLR id.
+ * Known Apps Script quirk: doPost() can run but the final redirect hop
+ * answers 405 with no body, so the id can't be read from the reply. Then
+ * the player list is re-read and the newest exact name+number match used.
  */
-async function handleSynchronousWrite(
-  webhookUrl: string,
-  payload: Record<string, unknown>,
-  successKeyHint: string,
-): Promise<NextResponse> {
-  const { status, text } = await scriptPost(webhookUrl, payload);
-
-  if (status >= 200 && status < 300) {
-    let body: Record<string, unknown> = {};
-    try { body = JSON.parse(text); } catch {
-      return NextResponse.json({ error: `Apps Script returned non-JSON: ${text.slice(0, 300)}` }, { status: 502 });
-    }
-    if (body.status === 'error') {
-      return NextResponse.json({ error: body.message }, { status: 500 });
-    }
-    return NextResponse.json(body);
-  }
-
-  if (status === 405) {
-    // The Apps Script side already executed (this is the documented
-    // redirect-delivery quirk, not a failure) — acknowledge so the client
-    // refetches the affected lists to see the updated state.
-    return NextResponse.json({ ok: true, note: `${successKeyHint} (unconfirmed response body due to known redirect quirk — refetch to verify)` });
-  }
-
-  return NextResponse.json(
-    { error: `Unexpected status ${status}: ${text.slice(0, 200)}` },
-    { status: 502 }
+async function createPlayerInSheet(
+  url: string,
+  p: { organizationId: string; userId: string; name: string; number: string; hand: string },
+): Promise<Record<string, unknown> | null> {
+  const r = await sheetWrite(url, { _kind: 'createPlayer', ...p });
+  if (!r.ok) throw new Error(r.error);
+  if (r.body.player) return r.body.player as Record<string, unknown>;
+  const list = await readAction(url, 'players', { organizationId: p.organizationId, userId: p.userId });
+  const players = (list.players as Array<Record<string, unknown>> | undefined) ?? [];
+  const matches = players.filter(x =>
+    String(x.name ?? '').trim().toLowerCase() === p.name.toLowerCase() && String(x.number ?? '').trim() === p.number,
   );
+  return matches[matches.length - 1] ?? null;
+}
+
+/**
+ * attach / merge / update: run against the primary store and copy to the
+ * other. The Sheet path keeps the 405 quirk handling (the write ran; the
+ * reply body is just unreadable), answering { ok: true } so the client
+ * refetches to see the result.
+ */
+async function synchronousWrite(
+  url: string,
+  payload: Record<string, unknown>,
+  hint: string,
+  writeDb: () => Promise<Record<string, unknown>>,
+): Promise<NextResponse> {
+  if (mode() === 'database') {
+    const result = await writeDb();
+    mirrorToSheet(String(payload._kind), url, payload);
+    return NextResponse.json({ status: 'ok', ...result });
+  }
+  const r = await sheetWrite(url, payload);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  if (mode() === 'dual') await mirror(String(payload._kind), writeDb);
+  if (r.status === 405) {
+    return NextResponse.json({ ok: true, note: `${hint} (unconfirmed response body due to known redirect quirk — refetch to verify)` });
+  }
+  return NextResponse.json(r.body);
 }

@@ -207,6 +207,16 @@ function doGet(e) {
     }
     var params = (e && e.parameter) ? e.parameter : {};
     var action = (params.action || 'history').toLowerCase();
+
+    // Admin-wide export for the one-time Postgres import. Only ever served
+    // when a shared secret is configured (and was checked above), because
+    // it is deliberately NOT scoped to one organization.
+    if (action === 'export') {
+      if (!PropertiesService.getScriptProperties().getProperty('API_SECRET')) {
+        return jsonOut({ error: 'Export is disabled until API_SECRET is set' });
+      }
+      return exportSheet(Number(params.offset) || 0, Math.min(Number(params.limit) || 2000, 5000));
+    }
     // organizationId is the primary scope; userId is the legacy/fallback
     // scope for solo coaches with no Organization and for pre-migration
     // rows. `owner` is accepted as a synonym of either, for older Scout
@@ -664,7 +674,15 @@ function createPlayerRecord(item) {
     throw new Error('createPlayerRecord requires organizationId (or userId) and name');
   }
 
-  var id  = generatePlayerId(data);
+  // When Postgres is the primary store it creates the player first and the
+  // Sheet copy must keep the SAME id. Accept a well-formed id that isn't
+  // already taken; otherwise generate the next one as before.
+  var requested = String(item.playerId || '').trim();
+  var taken = false;
+  for (var t = 1; t < data.length; t++) {
+    if (String(data[t][0] || '').trim() === requested) { taken = true; break; }
+  }
+  var id  = (/^PLR\d+$/.test(requested) && !taken) ? requested : generatePlayerId(data);
   var now = new Date().toISOString();
   var record = {
     id: id,
@@ -1202,6 +1220,47 @@ function getGamesList(organizationId, userId) {
     .sort(function(a, b) { return (b.lastTimestamp || '').localeCompare(a.lastTimestamp || ''); });
 
   return jsonOut({ games: games, count: games.length });
+}
+
+// ─── exportSheet (Postgres import) ────────────────────────────────────────────
+// Returns one page of Pitches rows (offset/limit over data rows) as
+// COLUMNS-keyed objects. The first page (offset 0) also carries every
+// Players and Rosters row. `total` lets the importer know when it's done.
+
+function sheetObjects_(sheet, keys, headersForMap, offset, limit) {
+  if (!sheet || sheet.getLastRow() < 2) return { rows: [], total: 0 };
+  var total = sheet.getLastRow() - 1;
+  if (offset >= total) return { rows: [], total: total };
+  var count = Math.min(limit, total - offset);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h).trim(); });
+  var data = sheet.getRange(2 + offset, 1, count, lastCol).getValues();
+  var idx = {};
+  header.forEach(function(h, i) { idx[h] = i; });
+  for (var k = 0; k < keys.length; k++) {
+    if (idx[keys[k]] === undefined && headersForMap[k] !== undefined && idx[headersForMap[k]] !== undefined) idx[keys[k]] = idx[headersForMap[k]];
+  }
+  var rows = data.map(function(row) {
+    var obj = {};
+    for (var k = 0; k < keys.length; k++) {
+      var i = idx[keys[k]];
+      var cell = i === undefined ? '' : row[i];
+      obj[keys[k]] = (cell instanceof Date) ? cell.toISOString() : (cell === null || cell === undefined ? '' : cell);
+    }
+    return obj;
+  });
+  return { rows: rows, total: total };
+}
+
+function exportSheet(offset, limit) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var pitches = sheetObjects_(ss.getSheetByName('Pitches'), COLUMNS, HEADERS, offset, limit);
+  var out = { pitches: pitches.rows, offset: offset, limit: limit, total: pitches.total };
+  if (offset === 0) {
+    out.players = sheetObjects_(ss.getSheetByName('Players'), PLAYER_COLUMNS, PLAYER_HEADERS, 0, 1000000).rows;
+    out.rosters = sheetObjects_(ss.getSheetByName('Rosters'), ROSTER_COLUMNS, ROSTER_HEADERS, 0, 1000000).rows;
+  }
+  return jsonOut(out);
 }
 
 // ─── doPost ───────────────────────────────────────────────────────────────────

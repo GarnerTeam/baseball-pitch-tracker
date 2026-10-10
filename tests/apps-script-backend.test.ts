@@ -108,3 +108,33 @@ describe('Apps Script edit scoping', () => {
     expect(pitchTypeOf('pitch-A')).toBe('FB');
   });
 });
+
+describe('Apps Script additions for the Postgres move', () => {
+  it('export is refused until a secret is configured, then pages through rows', () => {
+    const open = makeEnv({});
+    expect(open.call('doGet', { parameter: { action: 'export' } }).error).toMatch(/disabled/);
+
+    const env = makeEnv({ API_SECRET: 'k' });
+    const rows = Array.from({ length: 5 }, (_, i) => pitch({ id: `p${i}`, organizationId: i < 3 ? 'org_a' : 'org_b', userId: 'u' }));
+    env.call('doPost', { parameter: { key: 'k' }, postData: { contents: JSON.stringify(rows) } });
+    const first = env.call('doGet', { parameter: { key: 'k', action: 'export', offset: '0', limit: '3' } });
+    expect(first.total).toBe(5);
+    expect(first.pitches.map((p: { id: string }) => p.id)).toEqual(['p0', 'p1', 'p2']);
+    expect(first.players).toEqual([]);
+    const second = env.call('doGet', { parameter: { key: 'k', action: 'export', offset: '3', limit: '3' } });
+    expect(second.pitches.map((p: { id: string }) => p.id)).toEqual(['p3', 'p4']);
+    expect(second.players).toBeUndefined();
+  });
+
+  it('createPlayer keeps a requested free PLR id, and generates one otherwise', () => {
+    const env = makeEnv({ API_SECRET: 'k' });
+    const create = (extra: Record<string, unknown>) => env.call('doPost', {
+      parameter: { key: 'k' },
+      postData: { contents: JSON.stringify({ _kind: 'createPlayer', organizationId: 'org_a', userId: 'u', name: 'Kid', ...extra }) },
+    }).player.id;
+    expect(create({ playerId: 'PLR0042' })).toBe('PLR0042');
+    expect(create({ playerId: 'PLR0042' })).toBe('PLR0043'); // taken -> next
+    expect(create({ playerId: 'not-an-id' })).toBe('PLR0044');
+    expect(create({})).toBe('PLR0045');
+  });
+});
