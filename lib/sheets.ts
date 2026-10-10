@@ -101,6 +101,7 @@ function flattenPitch(p: PitchRecord) {
     visitingTeam:    p.visitingTeam    ?? '',
     id:              p.id,
     isEdit:          p.isEdit          ?? false,
+    isDelete:        p.isDelete        ?? false,
     rosterPlayerId:  p.rosterPlayerId   ?? '',
     playerId:        p.playerId         ?? '',
   };

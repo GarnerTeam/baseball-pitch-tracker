@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { scriptErrorBody } from '@/lib/apps-script';
 import { db, mirror, mirrorToSheet, mode, sheetWrite, scriptUrlFor } from '@/lib/backend';
-import { writePitches } from '@/lib/db/store';
+import { writePitches, isDeleteRow } from '@/lib/db/store';
 
 /**
  * POST /api/sheets — the offline pitch queue syncs here.
@@ -38,11 +38,18 @@ export async function POST(req: NextRequest) {
 
     if (mode() === 'database') {
       await writePitches(db(), stamped);
-      mirrorToSheet('pitches', url, stamped);
+      const forSheet = stamped.filter(p => !isDeleteRow(p));
+      if (forSheet.length) mirrorToSheet('pitches', url, forSheet);
       return NextResponse.json({ synced: pitches.length });
     }
 
-    const r = await sheetWrite(url, stamped);
+    // The Sheet has no way to remove a row — undo markers are skipped there.
+    const sheetRows = stamped.filter(p => !isDeleteRow(p));
+    if (sheetRows.length === 0) {
+      if (mode() === 'dual') await mirror('pitches', () => writePitches(db(), stamped));
+      return NextResponse.json({ synced: pitches.length });
+    }
+    const r = await sheetWrite(url, sheetRows);
     if (!r.ok) {
       console.error('[sheets proxy] write failed:', r.error);
       return NextResponse.json({ error: r.error }, { status: r.status });

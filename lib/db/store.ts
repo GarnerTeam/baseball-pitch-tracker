@@ -78,6 +78,12 @@ export function formatTs(v: unknown): string {
 
 export function isEditRow(r: Record<string, unknown>): boolean {
   const v = r.isEdit;
+  return !isDeleteRow(r) && (v === true || v === 'true' || v === 'TRUE' || v === 1);
+}
+
+/** An undo of a pitch that may already be stored: remove it. */
+export function isDeleteRow(r: Record<string, unknown>): boolean {
+  const v = r.isDelete;
   return v === true || v === 'true' || v === 'TRUE' || v === 1;
 }
 
@@ -126,7 +132,9 @@ export async function writePitches(
   db: Db,
   rows: Record<string, unknown>[],
   opts: { source?: 'app' | 'sheet_import'; refresh?: boolean } = {},
-): Promise<{ newRows: number; edits: number }> {
+): Promise<{ newRows: number; edits: number; deleted: number }> {
+  const deletes = rows.filter(isDeleteRow);
+  rows = rows.filter(r => !isDeleteRow(r));
   // One row per pitch id (the last one wins): a retried sync can leave the
   // same pitch on two Sheet rows, and Postgres refuses to upsert one id twice
   // in a single statement.
@@ -165,7 +173,19 @@ export async function writePitches(
       [toText(e.organizationId), toText(e.userId), toText(e.pitchType), toText(e.pitchZone), toText(e.pitchLocation), toText(e.action), toText(e.outcome), toText(e.id)],
     );
   }
-  return { newRows: fresh.length, edits: edits.length };
+  // Deletes go last: a pitch recorded and undone while offline arrives in
+  // the same upload as its own insert.
+  let deleted = 0;
+  for (const d of deletes) {
+    const id = toText(d.id).trim();
+    if (!id) continue;
+    const gone = await db.query(
+      `DELETE FROM pitches WHERE id = $3 AND ${PITCH_SCOPE} RETURNING id`,
+      [toText(d.organizationId), toText(d.userId), id],
+    );
+    deleted += gone.length;
+  }
+  return { newRows: fresh.length, edits: edits.length, deleted };
 }
 
 // ── Reads (Apps Script doGet actions) ─────────────────────────────────────────

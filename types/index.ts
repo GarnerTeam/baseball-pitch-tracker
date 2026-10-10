@@ -73,6 +73,7 @@ export interface PitchRecord {
   homeTeam?: string;
   visitingTeam?: string;
   isEdit?: boolean;   // true when this pitch was edited post-recording and needs a sheet row update
+  isDelete?: boolean; // true on an undo marker: remove this pitch from the stored record
   /** Stable identity from a Saved Roster (see lib/roster.ts) — set only when
    *  the batter was loaded from (or saved to) a roster, rather than typed in
    *  fresh for this game. When present, batter-history lookups match on this
