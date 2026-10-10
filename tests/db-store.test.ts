@@ -177,3 +177,26 @@ describe('Postgres store', () => {
     expect(ids.some(id => String(id).startsWith('sheet-'))).toBe(true);
   });
 });
+
+describe('player backfill plan', () => {
+  it('groups unlinked batters, reuses exact existing players, and flags number changes', async () => {
+    const pg = new PGlite();
+    const db: Db = { query: async (text, params = []) => (await pg.query(text, params)).rows as never[] };
+    await migrate((t: string, p?: unknown[]) => db.query(t, p), () => {});
+    const existing = await store.createPlayer(db, { organizationId: 'org_a', userId: 'u1', name: 'Lee', number: '4' });
+    await store.writePitches(db, [
+      pitch({ batterName: 'Sam Smith', batterNumber: '7', batterHand: 'L' }), pitch({ batterName: 'sam smith ', batterNumber: '7', batterHand: 'L' }),
+      pitch({ batterName: 'Sam Smith', batterNumber: '12' }),
+      pitch({ batterName: 'Lee', batterNumber: '4' }),
+      pitch({ batterName: 'Linked', batterNumber: '1', playerId: 'PLR0099' }),
+      pitch({ batterName: 'Other Org', organizationId: 'org_b' }),
+    ]);
+    const plan = await store.planPlayerBackfill(db, A);
+    expect(plan.groups.map(g => [g.name, g.number, g.pitchCount, g.existingPlayerId])).toEqual([
+      ['Sam Smith', '7', 2, ''], ['Lee', '4', 1, existing.id], ['Sam Smith', '12', 1, ''],
+    ]);
+    expect(plan.groups[0].hand).toBe('L');
+    expect(plan).toMatchObject({ toCreate: 2, toLinkToExisting: 1, pitchesToLink: 4 });
+    expect(plan.sameNameOtherNumber).toEqual([{ name: 'sam smith', numbers: ['12', '7'] }]);
+  });
+});
