@@ -126,7 +126,12 @@ export async function writePitches(
   rows: Record<string, unknown>[],
   opts: { source?: 'app' | 'sheet_import'; refresh?: boolean } = {},
 ): Promise<{ newRows: number; edits: number }> {
-  const fresh = rows.filter(r => !isEditRow(r));
+  // One row per pitch id (the last one wins): a retried sync can leave the
+  // same pitch on two Sheet rows, and Postgres refuses to upsert one id twice
+  // in a single statement.
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const r of rows.filter(r => !isEditRow(r))) byId.set(toText(r.id).trim() || legacyPitchId(r), r);
+  const fresh = [...byId.values()];
   const edits = rows.filter(r => isEditRow(r));
   const source = opts.source ?? 'app';
 

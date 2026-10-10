@@ -149,6 +149,15 @@ describe('Postgres store', () => {
     await expect(store.updatePlayer(db, B, p.id, { name: 'Hijack' })).rejects.toThrow(/not found/);
   });
 
+  it('a page with the same pitch twice (a retried sync) imports one row', async () => {
+    const p1 = pitch({ id: 'pitch-dup' });
+    const r = await store.importSheetPage(db, { pitches: [p1, { ...p1, pitchType: 'CB' }, pitch()] });
+    expect(r.pitches).toBe(3);
+    const rows = await db.query<{ id: string; pitch_type: string }>(`SELECT id, pitch_type FROM pitches ORDER BY id`);
+    expect(rows).toHaveLength(2);
+    expect(rows.find(x => x.id === 'pitch-dup')?.pitch_type).toBe('CB');
+  });
+
   it('sheet import is repeatable, skips edit rows, and ids rows that had none', async () => {
     const legacy = { ...pitch(), id: '' };
     const page = { pitches: [pitch({ id: 'pitch-x' }), legacy, { ...pitch(), isEdit: 'TRUE' }] };
