@@ -126,6 +126,15 @@ describe('Apps Script additions for the Postgres move', () => {
     expect(second.players).toBeUndefined();
   });
 
+  it('export reads columns by position, even with no header text over them', () => {
+    const env = makeEnv({ API_SECRET: 'k' });
+    env.call('doPost', { parameter: { key: 'k' }, postData: { contents: JSON.stringify([pitch({ id: 'p1', organizationId: 'org_a', userId: 'u', playerId: 'PLR0007' })]) } });
+    const header = env.sheets.Pitches[0] as string[];
+    header.splice(header.indexOf('Player ID')); // an old sheet: no labels on the newer columns
+    const out = env.call('doGet', { parameter: { key: 'k', action: 'export' } });
+    expect(out.pitches[0]).toMatchObject({ id: 'p1', organizationId: 'org_a', playerId: 'PLR0007', userId: 'u' });
+  });
+
   it('createPlayer keeps a requested free PLR id, and generates one otherwise', () => {
     const env = makeEnv({ API_SECRET: 'k' });
     const create = (extra: Record<string, unknown>) => env.call('doPost', {
