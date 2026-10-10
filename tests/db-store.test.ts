@@ -158,6 +158,14 @@ describe('Postgres store', () => {
     expect(rows.find(x => x.id === 'pitch-dup')?.pitch_type).toBe('CB');
   });
 
+  it('a re-import never blanks the organization or player already in Postgres', async () => {
+    await store.writePitches(db, [pitch({ id: 'pitch-live', organizationId: 'org_z', playerId: 'PLR0009' })]);
+    await store.importSheetPage(db, { pitches: [pitch({ id: 'pitch-live', organizationId: '', playerId: '', pitchType: 'SL' })] });
+    const [row] = await db.query<{ org_id: string; player_id: string; pitch_type: string }>(
+      `SELECT org_id, player_id, pitch_type FROM pitches WHERE id = 'pitch-live'`);
+    expect(row).toEqual({ org_id: 'org_z', player_id: 'PLR0009', pitch_type: 'SL' });
+  });
+
   it('sheet import is repeatable, skips edit rows, and ids rows that had none', async () => {
     const legacy = { ...pitch(), id: '' };
     const page = { pitches: [pitch({ id: 'pitch-x' }), legacy, { ...pitch(), isEdit: 'TRUE' }] };

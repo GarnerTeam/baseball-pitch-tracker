@@ -1227,24 +1227,21 @@ function getGamesList(organizationId, userId) {
 // COLUMNS-keyed objects. The first page (offset 0) also carries every
 // Players and Rosters row. `total` lets the importer know when it's done.
 
-function sheetObjects_(sheet, keys, headersForMap, offset, limit) {
+// Columns are read BY POSITION, exactly as every other function in this
+// script reads them (buildHeaderMap maps COLUMNS[k] -> column k). Sheets
+// created before a column was added often have no header text over it, so
+// matching on header names would silently drop that column's data.
+function sheetObjects_(sheet, keys, offset, limit) {
   if (!sheet || sheet.getLastRow() < 2) return { rows: [], total: 0 };
   var total = sheet.getLastRow() - 1;
   if (offset >= total) return { rows: [], total: total };
   var count = Math.min(limit, total - offset);
-  var lastCol = sheet.getLastColumn();
-  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h).trim(); });
+  var lastCol = Math.max(sheet.getLastColumn(), keys.length);
   var data = sheet.getRange(2 + offset, 1, count, lastCol).getValues();
-  var idx = {};
-  header.forEach(function(h, i) { idx[h] = i; });
-  for (var k = 0; k < keys.length; k++) {
-    if (idx[keys[k]] === undefined && headersForMap[k] !== undefined && idx[headersForMap[k]] !== undefined) idx[keys[k]] = idx[headersForMap[k]];
-  }
   var rows = data.map(function(row) {
     var obj = {};
     for (var k = 0; k < keys.length; k++) {
-      var i = idx[keys[k]];
-      var cell = i === undefined ? '' : row[i];
+      var cell = row[k];
       obj[keys[k]] = (cell instanceof Date) ? cell.toISOString() : (cell === null || cell === undefined ? '' : cell);
     }
     return obj;
@@ -1254,11 +1251,11 @@ function sheetObjects_(sheet, keys, headersForMap, offset, limit) {
 
 function exportSheet(offset, limit) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var pitches = sheetObjects_(ss.getSheetByName('Pitches'), COLUMNS, HEADERS, offset, limit);
+  var pitches = sheetObjects_(ss.getSheetByName('Pitches'), COLUMNS, offset, limit);
   var out = { pitches: pitches.rows, offset: offset, limit: limit, total: pitches.total };
   if (offset === 0) {
-    out.players = sheetObjects_(ss.getSheetByName('Players'), PLAYER_COLUMNS, PLAYER_HEADERS, 0, 1000000).rows;
-    out.rosters = sheetObjects_(ss.getSheetByName('Rosters'), ROSTER_COLUMNS, ROSTER_HEADERS, 0, 1000000).rows;
+    out.players = sheetObjects_(ss.getSheetByName('Players'), PLAYER_COLUMNS, 0, 1000000).rows;
+    out.rosters = sheetObjects_(ss.getSheetByName('Rosters'), ROSTER_COLUMNS, 0, 1000000).rows;
   }
   return jsonOut(out);
 }

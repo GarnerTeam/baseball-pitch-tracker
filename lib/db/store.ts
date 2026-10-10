@@ -146,8 +146,13 @@ export async function writePitches(
       return '(' + vals.map((_, j) => `$${start + j + 1}`).join(',') + ')';
     });
     const cols = [...PITCH_COLS, 'source'];
+    // A refresh (Sheet import) never blanks an identity field Postgres
+    // already holds: an older Sheet layout can be missing those columns.
+    const KEEP = new Set(['org_id', 'user_id', 'player_id', 'roster_player_id']);
     const conflict = opts.refresh
-      ? `DO UPDATE SET ${PITCH_COLS.filter(c => c !== 'id').map(c => `${c} = EXCLUDED.${c}`).join(', ')}, updated_at = now()`
+      ? `DO UPDATE SET ${PITCH_COLS.filter(c => c !== 'id').map(c => KEEP.has(c)
+          ? `${c} = COALESCE(NULLIF(EXCLUDED.${c}, ''), pitches.${c})`
+          : `${c} = EXCLUDED.${c}`).join(', ')}, updated_at = now()`
       : 'DO NOTHING';
     await db.query(`INSERT INTO pitches (${cols.join(',')}) VALUES ${tuples.join(',')} ON CONFLICT (id) ${conflict}`, params);
   }
