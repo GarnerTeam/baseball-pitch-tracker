@@ -7,6 +7,7 @@ const isPublicRoute = createRouteMatcher([
   '/scout(.*)',               // read-only scout view page
   '/api/sheets/scout(.*)',   // scout data API (called by unauthenticated scout page)
   '/api/sheets/history(.*)', // history API (called by batter history modal on scout page)
+  '/api/admin/import-sheet',  // checks admin session OR one-time import token itself
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

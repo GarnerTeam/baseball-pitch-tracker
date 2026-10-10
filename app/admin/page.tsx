@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
   const { userId } = await auth();
-  if (!isAdmin(userId)) {
+  if (!(await isAdmin(userId))) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-200 p-6">
         <div className="max-w-xl mx-auto space-y-3">
