@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { resolveScriptUrl, scriptGet, scriptPost, scriptErrorBody } from '@/lib/apps-script';
 
 /**
  * GET /api/sheets/players?url=<webhookUrl>
@@ -13,16 +14,11 @@ import { auth } from '@clerk/nextjs/server';
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const webhookUrl = searchParams.get('url');
   // ?type=unlinked powers the Player Profile "Attach historical records"
   // screen — distinct (batterName, batterNumber) combos with no playerId
   // yet, scoped to this organization. Default (no type) returns the full
   // active player list, as before.
   const type = searchParams.get('type') ?? 'players';
-
-  if (!webhookUrl) {
-    return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
-  }
 
   const { userId: sessionUserId, orgId: sessionOrgId } = await auth();
   const ownerParam = searchParams.get('owner') ?? '';
@@ -35,66 +31,21 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const webhookUrl = resolveScriptUrl(searchParams.get('url'));
     if (type === 'unlinked') {
-      const json = await fetchFromScript(webhookUrl, { action: 'unlinkedBatters', organizationId, userId: sessionUserId ?? '' });
+      const json = await scriptGet(webhookUrl, { action: 'unlinkedBatters', organizationId, userId: sessionUserId ?? '' });
       return NextResponse.json(json);
     }
-    const json = await fetchPlayersFromScript(webhookUrl, organizationId);
+    const json = await fetchPlayersFromScript(webhookUrl, organizationId, sessionUserId || ownerParam);
     return NextResponse.json(json);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { body, status } = scriptErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }
 
-async function fetchFromScript(webhookUrl: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const qs = new URLSearchParams(params);
-  const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
-    method: 'GET',
-    redirect: 'follow',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`Apps Script returned non-JSON: ${text.slice(0, 300)}`);
-  }
-}
-
-async function fetchPlayersFromScript(webhookUrl: string, organizationId: string): Promise<Record<string, unknown>> {
-  return fetchFromScript(webhookUrl, { action: 'players', organizationId });
-}
-
-/**
- * Follow all redirects as POST — mirrors the helper in /api/sheets/route.ts.
- * Google Apps Script has a 2-hop redirect chain and Node's fetch downgrades
- * POST -> GET on 302, which would silently drop the write.
- */
-async function postFollowingRedirects(
-  url: string,
-  body: string,
-  maxHops = 5
-): Promise<{ status: number; text: string }> {
-  let current = url;
-  for (let i = 0; i < maxHops; i++) {
-    const res = await fetch(current, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body,
-      redirect: 'manual',
-    });
-
-    if (res.status >= 300 && res.status < 400) {
-      const next = res.headers.get('location');
-      if (!next) return { status: res.status, text: '' };
-      current = next;
-      continue;
-    }
-
-    const text = await res.text();
-    return { status: res.status, text };
-  }
-  return { status: 0, text: 'Too many redirects' };
+async function fetchPlayersFromScript(webhookUrl: string, organizationId: string, userId: string): Promise<Record<string, unknown>> {
+  return scriptGet(webhookUrl, { action: 'players', organizationId, userId });
 }
 
 /**
@@ -145,11 +96,8 @@ export async function POST(req: NextRequest) {
     const organizationId = orgId || userId;
 
     const body = await req.json();
-    const { webhookUrl, action = 'create' } = body as { webhookUrl?: string; action?: string };
-
-    if (!webhookUrl) {
-      return NextResponse.json({ error: 'Missing webhookUrl' }, { status: 400 });
-    }
+    const { action = 'create' } = body as { action?: string };
+    const webhookUrl = resolveScriptUrl((body as { webhookUrl?: string }).webhookUrl);
 
     if (action === 'attach') {
       const { playerId, batterName, batterNumber } = body as { playerId?: string; batterName?: string; batterNumber?: string };
@@ -204,7 +152,7 @@ export async function POST(req: NextRequest) {
       hand: hand ?? '',
     };
 
-    const { status, text } = await postFollowingRedirects(webhookUrl, JSON.stringify(payload));
+    const { status, text } = await scriptPost(webhookUrl, payload);
 
     if (status >= 200 && status < 300) {
       let respBody: Record<string, unknown> = {};
@@ -232,7 +180,7 @@ export async function POST(req: NextRequest) {
     // created before — astronomically unlikely to pick the wrong row).
     if (status === 405 || (status >= 200 && status < 300)) {
       try {
-        const listJson = await fetchPlayersFromScript(webhookUrl, organizationId);
+        const listJson = await fetchPlayersFromScript(webhookUrl, organizationId, userId);
         const players = (listJson.players as Array<Record<string, unknown>> | undefined) ?? [];
         const candidates = players.filter(p =>
           String(p.name ?? '').trim().toLowerCase() === trimmedName.toLowerCase() &&
@@ -256,7 +204,8 @@ export async function POST(req: NextRequest) {
       { status: 502 }
     );
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { body, status } = scriptErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }
 
@@ -273,7 +222,7 @@ async function handleSynchronousWrite(
   payload: Record<string, unknown>,
   successKeyHint: string,
 ): Promise<NextResponse> {
-  const { status, text } = await postFollowingRedirects(webhookUrl, JSON.stringify(payload));
+  const { status, text } = await scriptPost(webhookUrl, payload);
 
   if (status >= 200 && status < 300) {
     let body: Record<string, unknown> = {};
