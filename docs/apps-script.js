@@ -920,6 +920,12 @@ function attachHistoricalRecords(item) {
   if (playerIdIdx === undefined) throw new Error('Cannot find playerId column — run setupSheet() first');
 
   var nameLower = batterName.toLowerCase();
+  // Optional, for the player backfill: `exactNumber` makes a blank number
+  // match only blank numbers, and `visitingTeam` limits the link to the
+  // batter's team (the game's Opposing Team).
+  var exactNumber = item.exactNumber === true;
+  var teamLower = (item.visitingTeam === undefined || item.visitingTeam === null) ? null : String(item.visitingTeam).trim().toLowerCase();
+  var teamIdx = hmap['visitingTeam'] !== undefined ? hmap['visitingTeam'] : hmap['Opposing Team'];
   var attached = 0;
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -928,7 +934,8 @@ function attachHistoricalRecords(item) {
     if (String(row[playerIdIdx] || '').trim()) continue; // already linked
     if (String(row[nameIdx] || '').trim().toLowerCase() !== nameLower) continue;
     var rowNum = numIdx !== undefined ? String(row[numIdx] || '').trim() : '';
-    if (batterNumber && rowNum !== batterNumber) continue;
+    if (exactNumber ? rowNum !== batterNumber : (batterNumber && rowNum !== batterNumber)) continue;
+    if (teamLower !== null && String(teamIdx !== undefined ? row[teamIdx] : '').trim().toLowerCase() !== teamLower) continue;
 
     sheet.getRange(i + 1, playerIdIdx + 1).setValue(playerId);
     attached++;
