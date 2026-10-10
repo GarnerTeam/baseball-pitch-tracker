@@ -10,12 +10,16 @@ interface GameSummary {
   firstTimestamp: string;
   lastTimestamp: string;
   pitchCount: number;
+  /** 'active' = still open, 'final' = ended, '' = recorded before games were saved. */
+  status?: string;
 }
 
 interface PastGamesBrowserProps {
   webhookUrl: string;
   currentGameId?: string;
   onSelectGame: (state: GameState) => void;
+  /** Reopens a game to keep tracking it; resolves to an error message or null. */
+  onResumeGame: (gameId: string, status: string) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -26,7 +30,7 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onClose }: PastGamesBrowserProps) {
+export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onResumeGame, onClose }: PastGamesBrowserProps) {
   const [games, setGames] = useState<GameSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingGameId, setLoadingGameId] = useState<string | null>(null);
@@ -53,6 +57,14 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
   }, [webhookUrl, currentGameId]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
+
+  async function handleResume(g: GameSummary) {
+    setLoadingGameId(g.gameId);
+    setError(null);
+    const err = await onResumeGame(g.gameId, g.status ?? '');
+    if (err) setError(err);
+    setLoadingGameId(null);
+  }
 
   async function handleSelect(gameId: string) {
     setLoadingGameId(gameId);
@@ -96,7 +108,7 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
         </button>
         <div className="flex-1">
           <p className="font-bold text-[21px]">Past Games</p>
-          <p className="text-slate-500 text-[14px]">Tap a game to view read-only</p>
+          <p className="text-slate-500 text-[14px]">Tap a game to view it · ▶ to keep tracking</p>
         </div>
         <button
           onClick={fetchGames}
@@ -139,28 +151,43 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
         )}
 
         {games && games.length > 0 && games.map(g => (
-          <button
+          <div
             key={g.gameId}
-            onClick={() => handleSelect(g.gameId)}
-            disabled={loadingGameId !== null}
-            className="w-full text-left bg-slate-900 rounded-xl border border-slate-700 p-4 active:bg-slate-800 transition-colors disabled:opacity-50"
+            className="w-full bg-slate-900 rounded-xl border border-slate-700 flex items-stretch overflow-hidden"
           >
-            <div className="flex items-center justify-between">
-              <p className="font-semibold text-[19px] text-slate-100">
+            <button
+              onClick={() => handleSelect(g.gameId)}
+              disabled={loadingGameId !== null}
+              className="flex-1 min-w-0 text-left p-4 active:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              <p className="font-semibold text-[19px] text-slate-100 truncate">
                 <span className="text-emerald-300">{g.homeTeam || 'Home'}</span>
                 <span className="text-slate-600 mx-1.5">vs</span>
                 <span className="text-blue-300">{g.visitingTeam || 'Away'}</span>
               </p>
-              {loadingGameId === g.gameId && (
-                <span className="text-slate-500 text-[14px]">Loading…</span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-slate-500 text-[14px]">{formatDate(g.lastTimestamp || g.firstTimestamp)}</span>
-              <span className="text-slate-600 text-[14px]">·</span>
-              <span className="text-slate-500 text-[14px]">{g.pitchCount} pitch{g.pitchCount !== 1 ? 'es' : ''}</span>
-            </div>
-          </button>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-slate-500 text-[14px]">{formatDate(g.lastTimestamp || g.firstTimestamp)}</span>
+                <span className="text-slate-600 text-[14px]">·</span>
+                <span className="text-slate-500 text-[14px]">{g.pitchCount} pitch{g.pitchCount !== 1 ? 'es' : ''}</span>
+                {g.status === 'active' && (
+                  <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/60">In progress</span>
+                )}
+                {g.status === 'final' && (
+                  <span className="text-[12px] font-semibold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">✓ Ended</span>
+                )}
+                {loadingGameId === g.gameId && <span className="text-slate-500 text-[14px]">Loading…</span>}
+              </div>
+            </button>
+            <button
+              onClick={() => handleResume(g)}
+              disabled={loadingGameId !== null}
+              className="flex-shrink-0 w-20 border-l border-slate-700 flex flex-col items-center justify-center gap-0.5 text-amber-300 hover:bg-slate-800 active:bg-slate-800 disabled:opacity-50"
+              title="Resume tracking this game"
+            >
+              <span className="text-[20px] leading-none">▶</span>
+              <span className="text-[13px] font-semibold">Resume</span>
+            </button>
+          </div>
         ))}
       </div>
     </div>

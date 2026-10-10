@@ -41,9 +41,11 @@ interface SlotFormState {
  * creates a brand-new player on save instead (see resolvePlayerIdentity).
  */
 function PlayerNameInput({
-  value, onTextChange, onPick, players, placeholder, autoFocus, borderColor, onEnter,
+  value, onTextChange, onPick, players, placeholder, autoFocus, borderColor, onEnter, team,
 }: {
   value: string;
+  /** The team being charted — its players are listed first and marked. */
+  team?: string;
   onTextChange: (v: string) => void;
   onPick: (player: PlayerRecord) => void;
   players: PlayerRecord[];
@@ -66,12 +68,22 @@ function PlayerNameInput({
   }, []);
 
   const query = value.trim().toLowerCase();
+  const teamKey = (team ?? '').trim().toLowerCase();
+  const onThisTeam = (p: PlayerRecord) =>
+    !!teamKey && (p.teams ?? []).some(t => t.trim().toLowerCase() === teamKey);
+  // Matches any word of the name ("smi" finds "Sam Smith"), so typing a
+  // last name works as well as a first name.
+  const nameMatches = (p: PlayerRecord) => {
+    const n = p.name.toLowerCase();
+    return n.startsWith(query) || n.split(/\s+/).some(w => w.startsWith(query)) ? 0 : n.includes(query) ? 1 : 2;
+  };
   const matches = players
-    .filter(p => p.name.toLowerCase().includes(query))
+    .filter(p => nameMatches(p) < 2)
     .sort((a, b) => {
-      const aStarts = a.name.toLowerCase().startsWith(query) ? 0 : 1;
-      const bStarts = b.name.toLowerCase().startsWith(query) ? 0 : 1;
-      if (aStarts !== bStarts) return aStarts - bStarts;
+      const byName = nameMatches(a) - nameMatches(b);
+      if (byName) return byName;
+      const byTeam = (onThisTeam(a) ? 0 : 1) - (onThisTeam(b) ? 0 : 1);
+      if (byTeam) return byTeam;
       return b.pitchesSeen - a.pitchesSeen;
     })
     .slice(0, 8);
@@ -109,6 +121,11 @@ function PlayerNameInput({
                 {p.name}{p.number && <span className="text-slate-400 font-normal"> (#{p.number})</span>}
                 {p.hand && <span className="text-slate-500 font-normal text-[14px]"> {p.hand}HB</span>}
               </p>
+              <p className={`text-[15px] font-medium truncate ${onThisTeam(p) ? 'text-emerald-400' : 'text-sky-300'}`}>
+                {(p.teams ?? []).length > 0
+                  ? <>{onThisTeam(p) ? '✓ ' : ''}{p.teams![0]}{p.teams!.length > 1 && <span className="text-slate-500 font-normal"> +{p.teams!.length - 1} more</span>}</>
+                  : <span className="text-slate-500 font-normal italic">No team yet</span>}
+              </p>
               <p className="text-slate-500 text-[13px]">
                 {p.pitchesSeen} pitch{p.pitchesSeen !== 1 ? 'es' : ''} · {p.gamesSeen} game{p.gamesSeen !== 1 ? 's' : ''}
                 {p.lastSeen && <> · Last seen {formatLastSeen(p.lastSeen)}</>}
@@ -144,6 +161,10 @@ interface LineupPanelProps {
   onEditPitch: (atBatId: string, pitchId: string, updates: Partial<PitchRecord>) => void;
   onUndoLastEnd: () => void;
   syncStatus?: SyncStatus | null;
+  /** Last cloud autosave of the whole game (live games only). */
+  gameSave?: { ok: boolean; at: number; message?: string } | null;
+  /** Opens End Game (live games only). */
+  onEndGame?: () => void;
 }
 
 /** K = swinging strikeout  |  mirrored K = strikeout looking */
@@ -473,9 +494,11 @@ function ScoutShareModal({ onClose }: { onClose: () => void }) {
 // Pitches are saved on this device first, then uploaded to the app's
 // database in the background — so a bad signal at the field never loses
 // data. This card shows where that upload stands and holds the Scout share.
-function SyncPanel({ syncQueue, syncStatus }: {
+function SyncPanel({ syncQueue, syncStatus, gameSave, onEndGame }: {
   syncQueue: number;
   syncStatus?: SyncStatus | null;
+  gameSave?: { ok: boolean; at: number; message?: string } | null;
+  onEndGame?: () => void;
 }) {
   const [showShare, setShowShare] = useState(false);
   const failed = !!syncStatus && !syncStatus.ok;
@@ -499,6 +522,13 @@ function SyncPanel({ syncQueue, syncStatus }: {
             {!failed && syncQueue === 0 && syncStatus?.ok && (
               <p className="text-emerald-400 text-[13px] mt-0.5">✓ {syncStatus.message}</p>
             )}
+            {gameSave && (
+              <p className={`text-[13px] mt-0.5 ${gameSave.ok ? 'text-slate-400' : 'text-amber-400'}`}>
+                {gameSave.ok
+                  ? `☁ Game auto-saved ${new Date(gameSave.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} — resume on any device`
+                  : '☁ Game auto-save paused — will retry'}
+              </p>
+            )}
           </div>
           <button
             onClick={() => setShowShare(true)}
@@ -519,6 +549,15 @@ function SyncPanel({ syncQueue, syncStatus }: {
           </div>
         )}
       </div>
+
+      {onEndGame && (
+        <button
+          onClick={onEndGame}
+          className="mt-3 w-full py-3 rounded-xl border-2 border-rose-700 bg-rose-950/40 hover:bg-rose-900/50 text-rose-200 text-[18px] font-bold"
+        >
+          🏁 End &amp; Save Game
+        </button>
+      )}
     </div>
   );
 }
@@ -528,7 +567,7 @@ export function LineupPanel({
   onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onReorderBatter, onEditPitch,
-  onUndoLastEnd, syncStatus,
+  onUndoLastEnd, syncStatus, gameSave, onEndGame,
   onLoadRoster,
 }: LineupPanelProps) {
   const {
@@ -611,7 +650,7 @@ export function LineupPanel({
 
     try {
       const created = await createPlayer(state.sheetsWebhookUrl, { name: trimmedName, number: number.trim(), hand });
-      setKnownPlayers(prev => [...prev, created]);
+      setKnownPlayers(prev => [...prev, { ...created, teams: created.teams?.length ? created.teams : (opposingTeam ? [opposingTeam] : []) }]);
       return created.id;
     } catch (e) {
       setSlotSaveError(`Couldn't save "${trimmedName}" to your player database (${String(e instanceof Error ? e.message : e)}) — batter was still added to this game.`);
@@ -1299,6 +1338,7 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                         onTextChange={v => setSlotForm(s => ({ ...s, name: v, playerId: null }))}
                         onPick={p => setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id }))}
                         players={knownPlayers}
+                        team={opposingTeam}
                         placeholder="Player name (optional)"
                         onEnter={() => handleSave(idx)}
                         autoFocus
@@ -1344,6 +1384,7 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                         onTextChange={v => setSlotForm(s => ({ ...s, name: v, playerId: null }))}
                         onPick={p => setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id }))}
                         players={knownPlayers}
+                        team={opposingTeam}
                         placeholder="Player name (optional)"
                         borderColor="border-blue-700"
                         onEnter={() => handleEditExistingSave(idx, player)}
@@ -1380,6 +1421,8 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       <SyncPanel
         syncQueue={state.syncQueue.length}
         syncStatus={syncStatus}
+        gameSave={gameSave}
+        onEndGame={onEndGame}
       />
       )}
 

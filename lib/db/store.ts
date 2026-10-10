@@ -241,16 +241,19 @@ export async function getGameScout(db: Db, scope: Scope, gameId: string) {
 export async function getGamesList(db: Db, scope: Scope) {
   const rows = await db.query<{
     game_id: string; home_team: string | null; visiting_team: string | null;
-    first_ts: unknown; last_ts: unknown; pitch_count: number;
+    first_ts: unknown; last_ts: unknown; pitch_count: number; status: string | null;
   }>(
-    `SELECT game_id,
-            -- the most recently recorded non-blank name (names can be filled in mid-game)
-            (array_agg(home_team ORDER BY COALESCE(ts, created_at) DESC, created_at DESC) FILTER (WHERE home_team <> ''))[1] AS home_team,
-            (array_agg(visiting_team ORDER BY COALESCE(ts, created_at) DESC, created_at DESC) FILTER (WHERE visiting_team <> ''))[1] AS visiting_team,
-            min(ts) AS first_ts, max(ts) AS last_ts, count(*)::int AS pitch_count
-     FROM pitches WHERE ${PITCH_SCOPE} AND game_id <> ''
-     GROUP BY game_id
-     ORDER BY max(ts) DESC NULLS LAST`,
+    `SELECT x.*, g.status FROM (
+       SELECT game_id,
+              -- the most recently recorded non-blank name (names can be filled in mid-game)
+              (array_agg(home_team ORDER BY COALESCE(ts, created_at) DESC, created_at DESC) FILTER (WHERE home_team <> ''))[1] AS home_team,
+              (array_agg(visiting_team ORDER BY COALESCE(ts, created_at) DESC, created_at DESC) FILTER (WHERE visiting_team <> ''))[1] AS visiting_team,
+              min(ts) AS first_ts, max(ts) AS last_ts, count(*)::int AS pitch_count
+       FROM pitches WHERE ${PITCH_SCOPE} AND game_id <> ''
+       GROUP BY game_id
+     ) x
+     LEFT JOIN games g ON g.org_id = $1 AND g.game_id = x.game_id
+     ORDER BY x.last_ts DESC NULLS LAST`,
     [scope.organizationId, scope.userId],
   );
   const games = rows.map(r => ({
@@ -260,6 +263,9 @@ export async function getGamesList(db: Db, scope: Scope) {
     firstTimestamp: formatTs(r.first_ts),
     lastTimestamp: formatTs(r.last_ts),
     pitchCount: Number(r.pitch_count),
+    // 'active' = still open (resumable), 'final' = ended with End Game,
+    // '' = recorded before games were saved.
+    status: r.status ?? '',
   }));
   return { games, count: games.length };
 }
@@ -279,15 +285,29 @@ interface PlayerRow {
   id: string; name: string; number: string; hand: string; notes: string;
   verified: boolean; is_active: boolean; first_seen: unknown; last_seen: unknown;
   games_seen: number | null; pitches_seen: number | null; last_pitch: unknown;
+  teams?: string[] | null;
 }
 
 const PLAYER_SELECT = `
-  SELECT p.*, s.games_seen, s.pitches_seen, s.last_pitch
+  SELECT p.*, s.games_seen, s.pitches_seen, s.last_pitch, tm.teams
   FROM players p
   LEFT JOIN LATERAL (
     SELECT count(DISTINCT game_id)::int AS games_seen, count(*)::int AS pitches_seen, max(ts) AS last_pitch
     FROM pitches WHERE player_id = p.id
-  ) s ON true`;
+  ) s ON true
+  -- Teams he has batted for (the visiting side is always the team being
+  -- charted), most recent first, then any Saved Roster he is on.
+  LEFT JOIN LATERAL (
+    SELECT array_agg(team ORDER BY rank, last_at DESC) AS teams FROM (
+      SELECT min(team) AS team, min(rank) AS rank, max(last_at) AS last_at FROM (
+        SELECT btrim(visiting_team) AS team, 0 AS rank, COALESCE(ts, created_at) AS last_at
+          FROM pitches WHERE player_id = p.id AND btrim(visiting_team) <> ''
+        UNION ALL
+        SELECT btrim(team_name), 1, updated_at
+          FROM rosters WHERE player_id = p.id AND btrim(team_name) <> ''
+      ) u GROUP BY lower(team)
+    ) t
+  ) tm ON true`;
 
 function playerRecord(r: PlayerRow) {
   const stored = r.last_seen ? new Date(String(r.last_seen instanceof Date ? r.last_seen.toISOString() : r.last_seen)) : null;
@@ -305,6 +325,7 @@ function playerRecord(r: PlayerRow) {
     notes: r.notes,
     verified: !!r.verified,
     isActive: !!r.is_active,
+    teams: r.teams ?? [],
   };
 }
 
