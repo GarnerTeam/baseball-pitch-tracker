@@ -1,46 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-
-/**
- * Follow all redirects as POST, up to maxHops.
- * Google Apps Script has a 2-hop redirect chain:
- *   script.google.com/exec → script.google.com/... → script.googleusercontent.com/...
- * Node's fetch with redirect:'follow' changes POST→GET on 302, killing doPost().
- * This helper re-issues a POST at every hop until we get a non-3xx status.
- */
-async function postFollowingRedirects(
-  url: string,
-  body: string,
-  maxHops = 5
-): Promise<{ status: number; text: string; hops: string[] }> {
-  const hops: string[] = [];
-  let current = url;
-
-  for (let i = 0; i < maxHops; i++) {
-    hops.push(current);
-    const res = await fetch(current, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body,
-      redirect: 'manual',
-    });
-
-    if (res.status >= 300 && res.status < 400) {
-      const next = res.headers.get('location');
-      if (!next) {
-        // Redirect with no Location — treat current as final
-        return { status: res.status, text: '', hops };
-      }
-      current = next;
-      continue;
-    }
-
-    const text = await res.text();
-    return { status: res.status, text, hops };
-  }
-
-  return { status: 0, text: 'Too many redirects', hops };
-}
+import { resolveScriptUrl, scriptPost, scriptErrorBody } from '@/lib/apps-script';
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,15 +20,22 @@ export async function POST(req: NextRequest) {
 
     const { webhookUrl, pitches } = await req.json();
 
-    if (!webhookUrl || !pitches?.length) {
-      return NextResponse.json({ error: 'Missing webhookUrl or pitches' }, { status: 400 });
+    if (!Array.isArray(pitches) || pitches.length === 0) {
+      return NextResponse.json({ error: 'Missing pitches' }, { status: 400 });
     }
+    const url = resolveScriptUrl(webhookUrl);
 
-    const stampedPitches = pitches.map((p: Record<string, unknown>) => ({ ...p, userId, organizationId }));
-    const bodyStr = JSON.stringify(stampedPitches);
-    const { status, text, hops } = await postFollowingRedirects(webhookUrl, bodyStr);
+    // Spread client fields FIRST, then the server-derived identity, so a
+    // client can never smuggle its own userId/organizationId (or a `_kind`
+    // that reroutes the write) into the row.
+    const stampedPitches = pitches.map((p: Record<string, unknown>) => {
+      const { _kind, ...rest } = p ?? {};
+      void _kind;
+      return { ...rest, userId, organizationId };
+    });
+    const { status, text, hops } = await scriptPost(url, stampedPitches);
 
-    console.log('[sheets proxy] hops:', hops.length, 'final status:', status);
+    console.log('[sheets proxy] hops:', hops, 'final status:', status);
 
     // 405 after execution is the normal Google Apps Script response —
     // doPost() ran and wrote the data; the response delivery channel
@@ -90,12 +57,13 @@ export async function POST(req: NextRequest) {
     // 0 = too many redirects, or any other unexpected status
     console.error('[sheets proxy] unexpected status', status, text.slice(0, 300));
     return NextResponse.json(
-      { error: `Unexpected status ${status} after ${hops.length} hops: ${text.slice(0, 200)}` },
+      { error: `Unexpected status ${status} after ${hops} hops: ${text.slice(0, 200)}` },
       { status: 502 }
     );
 
   } catch (err) {
     console.error('[sheets proxy] error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { body, status } = scriptErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }

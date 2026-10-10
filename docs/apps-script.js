@@ -4,6 +4,14 @@
  *   Extensions → Apps Script → Deploy → New deployment
  *   Type: Web app | Execute as: Me | Who has access: Anyone
  *
+ * SECURITY — shared secret (required once configured):
+ *   "Anyone" access means the web-app URL itself is public, so every call
+ *   must also carry a secret the Next.js server adds (?key=...). Set it in
+ *   Project Settings → Script Properties → API_SECRET, and set the SAME
+ *   value as SHEETS_WEBHOOK_SECRET in Vercel. While API_SECRET is unset the
+ *   script still accepts calls (so deploying this file can't break a live
+ *   app mid-season); as soon as it is set, calls without the key are refused.
+ *
  * COLUMNS must match the keys returned by flattenPitch() in lib/sheets.ts.
  * Order here controls the column order written to the sheet; keys are
  * also used in doPost() for row-by-row lookups, so order ≠ semantics.
@@ -74,6 +82,24 @@ function error(message) {
   return ContentService
     .createTextOutput(JSON.stringify({ status: 'error', message: message }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * True when the request carries the shared secret (Script Property
+ * API_SECRET). If no secret has been configured yet, every call is allowed
+ * and a warning is logged — see the SECURITY note at the top of this file.
+ */
+function isAuthorized(e) {
+  var expected = PropertiesService.getScriptProperties().getProperty('API_SECRET');
+  if (!expected) {
+    Logger.log('WARNING: API_SECRET is not set — this web app accepts unauthenticated calls.');
+    return true;
+  }
+  var provided = (e && e.parameter && e.parameter.key) ? String(e.parameter.key) : '';
+  if (provided.length !== expected.length) return false;
+  var diff = 0;
+  for (var i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+  return diff === 0;
 }
 
 /**
@@ -176,6 +202,9 @@ function rowMatchesScope(row, orgIdx, userIdIdx, organizationId, userId) {
  */
 function doGet(e) {
   try {
+    if (!isAuthorized(e)) {
+      return jsonOut({ error: 'Unauthorized', pitches: [], games: [], players: [] });
+    }
     var params = (e && e.parameter) ? e.parameter : {};
     var action = (params.action || 'history').toLowerCase();
     // organizationId is the primary scope; userId is the legacy/fallback
@@ -1178,6 +1207,24 @@ function getGamesList(organizationId, userId) {
 // ─── doPost ───────────────────────────────────────────────────────────────────
 
 function doPost(e) {
+  if (!isAuthorized(e)) return error('Unauthorized');
+  // One writer at a time: concurrent syncs from two devices would otherwise
+  // race on getLastRow() and overwrite each other's rows, and two player
+  // creations could be handed the same PLR id.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return error('Server busy — please retry');
+  }
+  try {
+    return handlePost_(e);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handlePost_(e) {
   try {
     Logger.log('doPost called');
 
@@ -1297,11 +1344,24 @@ function doPost(e) {
         var rawHeaders = data[0].map(function(h) { return String(h).trim(); });
         var hmap       = buildHeaderMap(rawHeaders);
         var idColIdx   = hmap['id'] !== undefined ? hmap['id'] : hmap['Row ID'];
+        var editOrgIdx  = hmap['organizationId'] !== undefined ? hmap['organizationId'] : hmap['Organization ID'];
+        var editUserIdx = hmap['userId'] !== undefined ? hmap['userId'] : hmap['User ID'];
 
         if (idColIdx !== undefined) {
           edits.forEach(function(edit) {
+            var editOrg  = String(edit.organizationId || '').trim();
+            var editUser = String(edit.userId || '').trim();
             for (var ri = 1; ri < data.length; ri++) {
               if (String(data[ri][idColIdx]) === String(edit.id)) {
+                // Tenant boundary: an edit may only touch a row in the
+                // caller's own organization (or, for pre-migration rows,
+                // one the caller recorded). Pitch ids are visible in Scout
+                // data, so without this check anyone could overwrite
+                // another team's pitches by id.
+                if (!rowMatchesScope(data[ri], editOrgIdx, editUserIdx, editOrg, editUser)) {
+                  Logger.log('Refused cross-scope edit for id=' + edit.id);
+                  break;
+                }
                 var sheetRow = ri + 1; // 1-based + header
                 ['pitchType','pitchZone','pitchLocation','action','outcome'].forEach(function(col) {
                   var ci = hmap[col];

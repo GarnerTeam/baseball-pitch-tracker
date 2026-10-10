@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { resolveScriptUrl, scriptGet, scriptErrorBody } from '@/lib/apps-script';
 
 /**
  * GET /api/sheets/scout?url=<webhookUrl>[&gameId=<id>][&owner=<userId>]
@@ -12,15 +13,13 @@ import { auth } from '@clerk/nextjs/server';
  * scope. BUT if a real Clerk session IS present (calls from the logged-in
  * main app), that always wins — a signed-in user can never override the
  * scope to read someone else's data by passing a different `owner`.
+ *
+ * The `url` param is only honoured if it is an allowlisted Apps Script
+ * deployment (see lib/apps-script.ts).
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const webhookUrl = searchParams.get('url');
-  const gameId     = searchParams.get('gameId') ?? '';
-
-  if (!webhookUrl) {
-    return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
-  }
+  const gameId = searchParams.get('gameId') ?? '';
 
   const { userId: sessionUserId, orgId: sessionOrgId } = await auth();
   const ownerParam = searchParams.get('owner') ?? '';
@@ -32,23 +31,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const qs  = new URLSearchParams({ action: 'scout', gameId, organizationId, userId });
-    const res = await fetch(`${webhookUrl}?${qs.toString()}`, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { 'Cache-Control': 'no-cache' },
-    });
-
-    const text = await res.text();
-    try {
-      return NextResponse.json(JSON.parse(text));
-    } catch {
-      return NextResponse.json(
-        { error: `Apps Script returned non-JSON: ${text.slice(0, 300)}` },
-        { status: 502 },
-      );
-    }
+    const url = resolveScriptUrl(searchParams.get('url'));
+    const json = await scriptGet(url, { action: 'scout', gameId, organizationId, userId });
+    return NextResponse.json(json);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { body, status } = scriptErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }
