@@ -123,6 +123,21 @@ describe('routes by DATA_STORE', () => {
     expect(sheetPosts).toHaveLength(0);
   });
 
+  it('database only: works with no Sheet configured at all and the browser marker "app"', async () => {
+    vi.stubEnv('DATA_STORE', 'database');
+    vi.stubEnv('SHEETS_MIRROR', 'off');
+    vi.stubEnv('SHEETS_WEBHOOK_URL', '');
+    const { POST } = await import('@/app/api/sheets/route');
+    expect(await (await POST(req('/api/sheets', { webhookUrl: 'app', pitches: [pitch] }))).json()).toEqual({ synced: 1 });
+    const players = await import('@/app/api/sheets/players/route');
+    const { player } = await (await players.POST(req('/api/sheets/players', { webhookUrl: 'app', name: 'Kid', number: '0' }))).json();
+    expect(player).toMatchObject({ id: 'PLR0001', number: '0' });
+    const games = await import('@/app/api/sheets/games/route');
+    expect((await (await games.GET(req('/api/sheets/games?url=app'))).json()).games).toHaveLength(1);
+    await flushAfter();
+    expect(sheetPosts).toHaveLength(0);
+  });
+
   it('DATA_STORE=database without DATABASE_URL falls back to the Sheet', async () => {
     vi.stubEnv('DATA_STORE', 'database');
     vi.stubEnv('DATABASE_URL', '');

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
-import { db, mirror, mirrorToSheet, mode, sheetWrite } from '@/lib/backend';
+import { scriptErrorBody } from '@/lib/apps-script';
+import { db, mirror, mirrorToSheet, mode, sheetWrite, scriptUrlFor } from '@/lib/backend';
 import { writePitches } from '@/lib/db/store';
 
 /**
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(pitches) || pitches.length === 0) {
       return NextResponse.json({ error: 'Missing pitches' }, { status: 400 });
     }
-    const url = resolveScriptUrl(webhookUrl);
+    const url = scriptUrlFor(webhookUrl);
 
     // Client fields first, then server identity, so a client can never
     // smuggle its own userId/organizationId (or a `_kind` that reroutes the

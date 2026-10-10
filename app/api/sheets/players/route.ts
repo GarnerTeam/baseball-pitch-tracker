@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
-import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite } from '@/lib/backend';
+import { scriptErrorBody } from '@/lib/apps-script';
+import { db, mirror, mirrorToSheet, mode, readAction, sheetWrite, scriptUrlFor } from '@/lib/backend';
 import * as store from '@/lib/db/store';
 
 /**
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const url = resolveScriptUrl(searchParams.get('url'));
+    const url = scriptUrlFor(searchParams.get('url'));
     const json = await readAction(url, type === 'unlinked' ? 'unlinkedBatters' : 'players', { organizationId, userId });
     return NextResponse.json(json);
   } catch (err) {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { action = 'create' } = body as { action?: string };
-    const url = resolveScriptUrl((body as { webhookUrl?: string }).webhookUrl);
+    const url = scriptUrlFor((body as { webhookUrl?: string }).webhookUrl);
 
     if (action === 'attach') {
       const playerId = String(body.playerId ?? '').trim();

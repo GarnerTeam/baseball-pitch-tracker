@@ -5,13 +5,12 @@ import { useState, useEffect, useRef } from 'react';
 interface SetupScreenProps {
   onStart: (homeTeam: string, visitingTeam: string) => void;
   webhookUrl: string;
-  onSetWebhookUrl: (url: string) => void;
   onViewPastGames: () => void;
 }
 
 /**
  * Text input with an autocomplete dropdown of previously used team names
- * (pulled from every game recorded in the Sheet this season). Typing filters
+ * (pulled from every game recorded this season). Typing filters
  * the list; tapping a suggestion fills the field. Falls back to a plain
  * text input with no dropdown if no team names are known yet.
  */
@@ -73,14 +72,11 @@ function TeamNameInput({
   );
 }
 
-export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGames }: SetupScreenProps) {
+export function SetupScreen({ onStart, webhookUrl, onViewPastGames }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
-  const [urlInput, setUrlInput] = useState(webhookUrl ?? '');
-  const [editingUrl, setEditingUrl] = useState(!webhookUrl);
   const [knownTeams, setKnownTeams] = useState<string[]>([]);
 
-  const isConnected = !!webhookUrl?.trim();
   const canStart    = home.trim().length > 0 && visiting.trim().length > 0;
 
   // Pull every team name seen across the season (both home and away) from
@@ -111,18 +107,8 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
     return () => { cancelled = true; };
   }, [webhookUrl]);
 
-  function handleSaveUrl() {
-    const trimmed = urlInput.trim();
-    onSetWebhookUrl(trimmed);
-    setEditingUrl(false);
-  }
-
   function handleStart() {
     if (!canStart) return;
-    // Save any pending URL before starting
-    if (urlInput.trim() !== webhookUrl) {
-      onSetWebhookUrl(urlInput.trim());
-    }
     onStart(home.trim(), visiting.trim());
   }
 
@@ -135,95 +121,6 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
           <div className="text-[60px] mb-2">⚾</div>
           <h1 className="text-[39px] font-bold tracking-tight">On the Bump</h1>
           <p className="text-slate-400 text-[18px] mt-1">Coach's pitch tracking tool</p>
-        </div>
-
-        {/* ── Data Backup Section ── */}
-        <div className={`rounded-2xl border ${isConnected && !editingUrl ? 'border-emerald-700 bg-emerald-950/40' : 'border-amber-700 bg-amber-950/30'} overflow-hidden`}>
-
-          {/* Header row */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[21px]">{isConnected && !editingUrl ? '✅' : '⚠️'}</span>
-              <span className={`text-[18px] font-bold ${isConnected && !editingUrl ? 'text-emerald-300' : 'text-amber-300'}`}>
-                {isConnected && !editingUrl ? 'Data Backup Connected' : 'Data Backup Required'}
-              </span>
-            </div>
-            {isConnected && !editingUrl && (
-              <button
-                onClick={() => setEditingUrl(true)}
-                className="text-slate-500 hover:text-slate-300 text-[15px] underline"
-              >
-                Change
-              </button>
-            )}
-          </div>
-
-          {/* Connected state — collapsed */}
-          {isConnected && !editingUrl && (
-            <div className="px-4 pb-3">
-              <p className="text-emerald-400/80 text-[15px]">
-                Every pitch saves automatically to your Google Sheet. Your data is safe even if your browser closes.
-              </p>
-            </div>
-          )}
-
-          {/* Not connected OR editing — show input */}
-          {(!isConnected || editingUrl) && (
-            <div className="px-4 pb-4 space-y-3">
-              <p className="text-amber-200/80 text-[15px] leading-snug">
-                Without this, game data is only stored on this device. A browser refresh or phone crash <span className="font-bold text-amber-300">will permanently erase your data.</span>
-              </p>
-
-              {/* PDF instructions link */}
-              <a
-                href="https://galaxy-prod.tlcdn.com/gen/user_36WGxyCD8MIKwlVSJacTZnpAQVO/07812bbc-6846-4ea8-9ec9-8980e8106254.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-blue-400 text-[15px] font-medium hover:text-blue-300 transition-colors"
-              >
-                <span className="text-[18px]">📄</span>
-                <span className="underline">Setup Instructions (PDF)</span>
-              </a>
-
-              {/* URL input */}
-              <div className="space-y-2">
-                <p className="text-slate-400 text-[15px]">Paste your Google Sheets webhook URL:</p>
-                <input
-                  value={urlInput}
-                  onChange={e => setUrlInput(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/..."
-                  className="w-full h-10 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[13px] outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveUrl}
-                    disabled={!urlInput.trim()}
-                    className="flex-1 h-9 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-[16px] font-semibold transition-colors"
-                  >
-                    Connect
-                  </button>
-                  {editingUrl && isConnected && (
-                    <button
-                      onClick={() => { setUrlInput(webhookUrl); setEditingUrl(false); }}
-                      className="px-4 h-9 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-[16px] transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Skip warning */}
-              {!isConnected && (
-                <p className="text-slate-600 text-[13px] text-center">
-                  You can still start a game without backup — at your own risk.
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
         {/* ── Team Entry Card ── */}
@@ -282,19 +179,11 @@ export function SetupScreen({ onStart, webhookUrl, onSetWebhookUrl, onViewPastGa
             className={`w-full h-13 rounded-2xl text-[24px] font-bold transition-all py-3 ${
               !canStart
                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                : isConnected
-                  ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40'
-                  : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/40'
+                : 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40'
             }`}
           >
-            {!canStart ? '⚾ Start Game' : isConnected ? '⚾ Start Game' : '⚠️ Start Without Backup'}
+            ⚾ Start Game
           </button>
-
-          {!isConnected && canStart && (
-            <p className="text-center text-amber-600/70 text-[13px]">
-              Data will only be saved on this device
-            </p>
-          )}
         </div>
 
         <button

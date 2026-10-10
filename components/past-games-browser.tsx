@@ -34,7 +34,7 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
 
   const fetchGames = useCallback(async () => {
     if (!webhookUrl) {
-      setError('No Google Sheets connection configured. Connect a sheet on the Setup screen first.');
+      setError('Past games are not available right now.');
       return;
     }
     setLoading(true);
@@ -119,7 +119,7 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onCl
             <p className="text-red-300 text-[16px] font-semibold">Couldn't load games</p>
             <p className="text-red-400/80 text-[14px]">{error}</p>
             <p className="text-slate-500 text-[13px]">
-              Make sure the Apps Script has been updated with the "games" action and redeployed.
+              Check your connection and try again.
             </p>
             <button
               onClick={fetchGames}

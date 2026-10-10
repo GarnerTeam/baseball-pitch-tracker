@@ -111,7 +111,7 @@ export async function syncQueueToSheets(
   webhookUrl: string,
   queue: PitchRecord[]
 ): Promise<{ synced: number; error?: string; _urlTail?: string }> {
-  if (!webhookUrl || queue.length === 0) return { synced: 0 };
+  if (queue.length === 0) return { synced: 0 };
   try {
     const flatRows = queue.map(flattenPitch);
     const res = await fetch('/api/sheets', {
@@ -129,7 +129,12 @@ export async function syncQueueToSheets(
   }
 }
 
-export const DEFAULT_WEBHOOK_URL = process.env.NEXT_PUBLIC_SHEETS_WEBHOOK_URL ?? '';
+/**
+ * Legacy name. The app always syncs to its own server now, which decides
+ * where data is stored; this value just means "sync is on". No storage
+ * address (and no Google Sheet link) ever lives in the browser.
+ */
+export const DEFAULT_WEBHOOK_URL = 'app';
 
 // ── Game-state → PitchRow converter ───────────────────────────────────
 

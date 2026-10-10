@@ -143,7 +143,6 @@ interface LineupPanelProps {
   onLoadRoster?: (players: Player[]) => void;
   onEditPitch: (atBatId: string, pitchId: string, updates: Partial<PitchRecord>) => void;
   onUndoLastEnd: () => void;
-  onSetWebhookUrl: (url: string) => void;
   syncStatus?: SyncStatus | null;
 }
 
@@ -408,10 +407,9 @@ function BatterSprayChart({ allABs }: { allABs: AtBat[] }) {
 }
 
 // ── Scout Share Modal ─────────────────────────────────────────────────────────────
-function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose: () => void }) {
-  // The Scout link now carries the owner's Clerk user id — required so the
-  // (unauthenticated) Scout page can be scoped to just this coach's data,
-  // now that the sheet holds multiple coaches' rows.
+function ScoutShareModal({ onClose }: { onClose: () => void }) {
+  // The Scout link carries the owner's organization (or user) id so the
+  // unauthenticated Scout page can be scoped to just this coach's data.
   const { user } = useUser();
   const { organization } = useOrganization();
   // Player identity, lineup autocomplete, and all historical batter
@@ -420,7 +418,7 @@ function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose:
   // same database) — falling back to the personal userId for solo coaches
   // who haven't set up an Organization yet.
   const ownerId  = organization?.id ?? user?.id ?? '';
-  const scoutUrl = `https://scout.robertegarner.com?url=${encodeURIComponent(webhookUrl)}&owner=${encodeURIComponent(ownerId)}`;
+  const scoutUrl = `https://scout.robertegarner.com?owner=${encodeURIComponent(ownerId)}`;
   const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(scoutUrl)}&bgcolor=0f172a&color=e2e8f0&margin=12`;
   const [copied, setCopied] = useState(false);
 
@@ -471,133 +469,53 @@ function ScoutShareModal({ webhookUrl, onClose }: { webhookUrl: string; onClose:
   );
 }
 
-// ── Sheets URL Panel ───────────────────────────────────────────────────────────────────
-function SheetsUrlPanel({ webhookUrl, syncQueue, onSave, syncStatus }: {
-  webhookUrl: string;
+// ── Cloud Sync Panel ─────────────────────────────────────────────────────────────────
+// Pitches are saved on this device first, then uploaded to the app's
+// database in the background — so a bad signal at the field never loses
+// data. This card shows where that upload stands and holds the Scout share.
+function SyncPanel({ syncQueue, syncStatus }: {
   syncQueue: number;
-  onSave: (url: string) => void;
   syncStatus?: SyncStatus | null;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(webhookUrl);
   const [showShare, setShowShare] = useState(false);
-  const isConnected = !!webhookUrl?.trim();
-
-  function save() {
-    onSave(val.trim());
-    setEditing(false);
-  }
-
-  const displayUrl = webhookUrl
-    ? webhookUrl.replace('https://script.google.com/macros/s/', '…/s/').slice(0, 38) + '…'
-    : '';
+  const failed = !!syncStatus && !syncStatus.ok;
 
   return (
     <div className="mx-3 mb-6 mt-4">
-      <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Google Sheets Sync</p>
+      <p className="text-slate-400 text-[18px] font-medium uppercase tracking-wider mb-2">Cloud Sync</p>
 
-      <div className={`rounded-xl border-2 ${isConnected && !editing ? 'border-emerald-600 bg-emerald-950/40' : 'border-amber-600 bg-amber-950/30'}`}>
+      <div className={`rounded-xl border-2 ${failed ? 'border-red-700 bg-red-950/30' : syncQueue > 0 ? 'border-amber-600 bg-amber-950/30' : 'border-emerald-600 bg-emerald-950/40'}`}>
         <div className="flex items-center gap-3 px-4 py-3">
-          <span className="text-[28px] leading-none flex-shrink-0">
-            {isConnected && !editing ? '✅' : '⚠️'}
-          </span>
+          <span className="text-[28px] leading-none flex-shrink-0">{failed ? '⚠️' : syncQueue > 0 ? '⏳' : '✅'}</span>
           <div className="flex-1 min-w-0">
-            <p className={`text-[18px] font-bold ${isConnected && !editing ? 'text-emerald-300' : 'text-amber-300'}`}>
-              {isConnected && !editing ? 'Sheets Connected' : 'Sheets Not Connected'}
+            <p className={`text-[18px] font-bold ${failed ? 'text-red-300' : syncQueue > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
+              {failed ? 'Sync paused' : syncQueue > 0 ? 'Uploading…' : 'All pitches saved'}
             </p>
-            {isConnected && !editing && (
-              <p className="text-slate-500 text-[13px] truncate mt-0.5">{displayUrl}</p>
-            )}
             {syncQueue > 0 && (
               <p className="text-amber-400 text-[14px] font-medium mt-0.5">
-                ⏳ {syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} pending sync
+                {syncQueue} pitch{syncQueue !== 1 ? 'es' : ''} waiting to upload
               </p>
             )}
-            {isConnected && !editing && syncQueue === 0 && !syncStatus && (
-              <p className="text-emerald-600 text-[13px] mt-0.5">All pitches synced</p>
-            )}
-            {isConnected && !editing && syncStatus?.ok && (
+            {!failed && syncQueue === 0 && syncStatus?.ok && (
               <p className="text-emerald-400 text-[13px] mt-0.5">✓ {syncStatus.message}</p>
             )}
-            {isConnected && !editing && syncStatus && !syncStatus.ok && (
-              <p className="text-red-400 text-[14px] mt-0.5 font-semibold">⚠ Sync failed</p>
-            )}
           </div>
-          {isConnected && !editing && (
-            <div className="flex gap-2 flex-shrink-0">
-              <button
-                onClick={() => setShowShare(true)}
-                className="px-3 h-9 rounded-lg border text-[15px] font-medium bg-indigo-900 border-indigo-700 text-indigo-200 hover:bg-indigo-800"
-                title="Share Scout View"
-              >
-                📡 Share
-              </button>
-              <button
-                onClick={() => { setVal(webhookUrl); setEditing(true); }}
-                className={`px-3 h-9 rounded-lg border text-[15px] font-medium ${syncStatus && !syncStatus.ok ? 'bg-red-950 border-red-700 text-red-300 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}
-              >
-                {syncStatus && !syncStatus.ok ? 'Fix URL' : 'Change'}
-              </button>
-            </div>
-          )}
-          {showShare && <ScoutShareModal webhookUrl={webhookUrl} onClose={() => setShowShare(false)} />}
+          <button
+            onClick={() => setShowShare(true)}
+            className="px-3 h-9 rounded-lg border text-[15px] font-medium bg-indigo-900 border-indigo-700 text-indigo-200 hover:bg-indigo-800 flex-shrink-0"
+            title="Share Scout View"
+          >
+            📡 Share
+          </button>
+          {showShare && <ScoutShareModal onClose={() => setShowShare(false)} />}
         </div>
 
-        {isConnected && !editing && syncStatus && !syncStatus.ok && (
-          <div className="px-4 pb-3 border-t border-red-900/40 pt-3 space-y-2">
-            <p className="text-red-300 text-[14px] font-semibold">Error from server:</p>
-            <p className="text-red-400/90 text-[13px] font-mono break-all leading-snug bg-red-950/50 rounded-lg px-3 py-2">
-              {syncStatus.message}
+        {failed && (
+          <div className="px-4 pb-3 border-t border-red-900/40 pt-3 space-y-1">
+            <p className="text-slate-300 text-[14px]">
+              Your pitches are safe on this device and will upload automatically when the connection comes back.
             </p>
-            <p className="text-slate-400 text-[14px]">Most likely causes:</p>
-            <ul className="text-slate-400 text-[13px] space-y-1 list-none pl-1">
-              <li>• Script not deployed as a Web App yet</li>
-              <li>• Access set to <strong className="text-slate-300">"Only myself"</strong> — must be <strong className="text-slate-300">"Anyone"</strong></li>
-              <li>• Pasted the editor URL instead of the /exec deployment URL</li>
-            </ul>
-            <button
-              onClick={() => { setVal(webhookUrl); setEditing(true); }}
-              className="w-full h-11 rounded-xl bg-red-700 hover:bg-red-600 text-white text-[18px] font-bold mt-1"
-            >
-              Update URL
-            </button>
-          </div>
-        )}
-
-        {(!isConnected || editing) && (
-          <div className="px-4 pb-4 space-y-3 border-t border-slate-700/60 pt-3">
-            <p className="text-slate-400 text-[15px]">
-              Paste your Google Apps Script web app URL:
-            </p>
-            <p className="text-slate-500 text-[13px] -mt-1">
-              In the script editor: Deploy → Manage deployments → copy the /exec URL
-            </p>
-            <input
-              value={val}
-              onChange={e => setVal(e.target.value)}
-              placeholder="https://script.google.com/macros/s/…/exec"
-              className="w-full h-11 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 px-3 text-[14px] outline-none focus:border-emerald-500 placeholder:text-slate-600"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={save}
-                disabled={!val.trim()}
-                className="flex-1 h-11 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-[18px] font-bold"
-              >
-                Connect Sheets
-              </button>
-              {editing && (
-                <button
-                  onClick={() => setEditing(false)}
-                  className="px-4 h-11 rounded-xl bg-slate-700 text-slate-300 text-[16px]"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+            <p className="text-red-400/80 text-[12px] font-mono break-all">{syncStatus?.message}</p>
           </div>
         )}
       </div>
@@ -610,7 +528,7 @@ export function LineupPanel({
   onNextBatter, onPrevBatter, onEndAtBat,
   onChangePitcher, onAddBatter, onRemoveBatter, onSetBatterAt,
   onReorderBatter, onEditPitch,
-  onUndoLastEnd, onSetWebhookUrl, syncStatus,
+  onUndoLastEnd, syncStatus,
   onLoadRoster,
 }: LineupPanelProps) {
   const {
@@ -1457,12 +1375,10 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
         )}
       </div>
 
-      {/* ── Google Sheets URL ── */}
+      {/* ── Cloud sync status + Scout share ── */}
       {!readOnly && (
-      <SheetsUrlPanel
-        webhookUrl={state.sheetsWebhookUrl}
+      <SyncPanel
         syncQueue={state.syncQueue.length}
-        onSave={onSetWebhookUrl}
         syncStatus={syncStatus}
       />
       )}

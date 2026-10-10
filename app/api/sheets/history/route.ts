@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { resolveScriptUrl, scriptErrorBody } from '@/lib/apps-script';
-import { readAction } from '@/lib/backend';
+import { scriptErrorBody } from '@/lib/apps-script';
+import { readAction, scriptUrlFor } from '@/lib/backend';
 
 /**
  * GET /api/sheets/history?url=<webhookUrl>&batter=<name>&num=<number>[&playerId=<id>][&owner=<userId>]
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const url = resolveScriptUrl(searchParams.get('url'));
+    const url = scriptUrlFor(searchParams.get('url'));
     const params: Record<string, string> = { batter, num };
     if (playerId) params.playerId = playerId;
     const json = await readAction(url, 'history', { organizationId, userId }, params);
