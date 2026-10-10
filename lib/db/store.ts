@@ -291,14 +291,75 @@ export async function getGamesList(db: Db, scope: Scope) {
 }
 
 /** action=roster */
+/** Team names compared without case, spaces or punctuation ("Central MD  Cyclones-Vespa 16u" = "Central MD Cyclones Vespa 16U"). */
+const TEAM_KEY = (col: string) => `regexp_replace(lower(${col}), '[^a-z0-9]', '', 'g')`;
+
+/**
+ * action=roster — the team's Saved Roster; when none was saved, the batting
+ * order from the most recent game charted against that team (so a team
+ * already faced loads without anyone having tapped "Save roster"). When
+ * neither exists, `suggestions` lists similarly named teams.
+ */
 export async function getRoster(db: Db, scope: Scope, teamName: string) {
+  const p = [scope.organizationId, scope.userId, teamName];
   const rows = await db.query<{ player_id: string; name: string; number: string; hand: string }>(
     `SELECT player_id, name, number, hand FROM rosters
-     WHERE ${ROSTER_SCOPE} AND lower(btrim(team_name)) = lower(btrim($3)) ORDER BY seq`,
-    [scope.organizationId, scope.userId, teamName],
+     WHERE ${ROSTER_SCOPE} AND ${TEAM_KEY('team_name')} = ${TEAM_KEY('$3')} ORDER BY seq`, p,
   );
-  const players = rows.map(r => ({ id: r.player_id, name: r.name, number: r.number, hand: r.hand || null }));
-  return { players, count: players.length };
+  if (rows.length) {
+    const players = rows.map(r => ({ id: r.player_id, name: r.name, number: r.number, hand: r.hand || null }));
+    return { players, count: players.length, source: 'saved', suggestions: [] as string[] };
+  }
+
+  const [last] = await db.query<{ game_id: string; last_ts: unknown; team: string }>(
+    `SELECT game_id, max(COALESCE(ts, created_at)) AS last_ts, min(visiting_team) AS team FROM pitches
+     WHERE ${PITCH_SCOPE} AND game_id <> '' AND ${TEAM_KEY('visiting_team')} = ${TEAM_KEY('$3')}
+     GROUP BY game_id ORDER BY max(COALESCE(ts, created_at)) DESC LIMIT 1`, p,
+  );
+  if (last) {
+    // Each batting-order spot's latest batter in that game (subs replace starters).
+    const spots = await db.query<{ spot: number; name: string; number: string; hand: string; player_id: string; roster_player_id: string }>(
+      `SELECT DISTINCT ON (lineup_position) lineup_position AS spot, btrim(batter_name) AS name, btrim(batter_number) AS number,
+              batter_hand AS hand, player_id, roster_player_id
+       FROM pitches
+       WHERE ${PITCH_SCOPE} AND game_id = $3 AND btrim(batter_name) <> '' AND lineup_position IS NOT NULL
+       ORDER BY lineup_position, COALESCE(ts, created_at) DESC, created_at DESC`,
+      [scope.organizationId, scope.userId, last.game_id],
+    );
+    // Batters typed without picking a suggestion: link them to the player
+    // record with the same name and number when there is exactly one.
+    const known = await db.query<{ id: string; name: string; number: string }>(
+      `SELECT id, name, number FROM players WHERE (org_id = $1 OR (org_id = '' AND created_by = $2)) AND is_active`,
+      [scope.organizationId, scope.userId],
+    );
+    const lookup = (name: string, number: string) => {
+      const m = known.filter(k => k.name.trim().toLowerCase() === name.toLowerCase() && k.number.trim() === number);
+      return m.length === 1 ? m[0].id : '';
+    };
+    const players = spots.map(r => ({
+      id: r.player_id || r.roster_player_id || lookup(r.name, r.number) || `lastgame-${r.number}-${r.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: r.name, number: r.number,
+      hand: (r.hand === 'L' || r.hand === 'R') ? r.hand : null,
+    }));
+    return { players, count: players.length, source: 'lastGame', lastGameDate: formatTs(last.last_ts), suggestions: [] as string[] };
+  }
+
+  // Nothing under that name — offer teams whose names share a word with it.
+  const words = teamName.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d+u?$/.test(w));
+  let suggestions: string[] = [];
+  if (words.length) {
+    const found = await db.query<{ team: string }>(
+      `SELECT team FROM (
+         SELECT btrim(visiting_team) AS team, max(COALESCE(ts, created_at)) AS last_at FROM pitches
+         WHERE ${PITCH_SCOPE} AND btrim(visiting_team) <> '' GROUP BY btrim(visiting_team)
+         UNION ALL
+         SELECT btrim(team_name), max(updated_at) FROM rosters WHERE ${ROSTER_SCOPE} GROUP BY btrim(team_name)
+       ) t WHERE lower(team) ~ $3 GROUP BY team ORDER BY max(last_at) DESC LIMIT 5`,
+      [scope.organizationId, scope.userId, words.map(w => `\\m${w}`).join('|')],
+    );
+    suggestions = found.map(f => f.team);
+  }
+  return { players: [], count: 0, source: '', suggestions };
 }
 
 interface PlayerRow {
@@ -391,7 +452,7 @@ export async function saveRoster(db: Db, items: Record<string, unknown>[]) {
     await db.query(
       `INSERT INTO rosters (org_id, user_id, team_name, player_id, name, number, hand, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, now()))
-       ON CONFLICT (scope_key, player_id) DO UPDATE SET
+       ON CONFLICT (scope_key, lower(btrim(team_name)), player_id) DO UPDATE SET
          user_id = EXCLUDED.user_id, team_name = EXCLUDED.team_name, name = EXCLUDED.name,
          number = EXCLUDED.number, hand = EXCLUDED.hand, updated_at = EXCLUDED.updated_at`,
       [org, user, toText(it.teamName), pid, toText(it.name), toText(it.number), toText(it.hand), toTs(it.updatedAt)],
@@ -473,7 +534,8 @@ export async function mergePlayers(db: Db, scope: Scope, sourcePlayerId: string,
   // A roster that already lists the target keeps that row; the duplicate goes.
   await db.query(
     `DELETE FROM rosters r WHERE r.player_id = $1
-       AND EXISTS (SELECT 1 FROM rosters t WHERE t.scope_key = r.scope_key AND t.player_id = $2)`, [src, tgt],
+       AND EXISTS (SELECT 1 FROM rosters t WHERE t.scope_key = r.scope_key AND t.player_id = $2
+                   AND lower(btrim(t.team_name)) = lower(btrim(r.team_name)))`, [src, tgt],
   );
   const rosters = await db.query<{ seq: string }>(
     `UPDATE rosters SET player_id = $2, updated_at = now() WHERE player_id = $1 RETURNING seq`, [src, tgt],

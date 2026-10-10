@@ -7,7 +7,7 @@ import { PitcherStatsModal } from '@/components/pitcher-stats-modal';
 import { BatterHistoryModal } from '@/components/batter-history-modal';
 import { BatterFigureIcon } from '@/components/strike-zone';
 import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
-import { fetchRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
+import { lookupRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
 import { fetchPlayers, createPlayer, isPlayerId } from '@/lib/players';
 import { RosterPlayer, PlayerRecord } from '@/types';
 import { LineupImportModal } from '@/components/lineup-import-modal';
@@ -662,26 +662,40 @@ export function LineupPanel({
   const [rosterMenuOpen, setRosterMenuOpen] = useState(false);
   const [rosterBusy, setRosterBusy] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  const [rosterNote, setRosterNote] = useState<string | null>(null);
+  const [rosterSuggestions, setRosterSuggestions] = useState<string[]>([]);
   const opposingTeam = (state.visitingTeam ?? '').trim();
 
-  async function handleLoadRoster() {
-    if (!onLoadRoster || !state.sheetsWebhookUrl || !opposingTeam) return;
+  async function handleLoadRoster(teamName: string = opposingTeam) {
+    if (!onLoadRoster || !state.sheetsWebhookUrl || !teamName) return;
+    const named = lineup.filter(p => p?.name?.trim()).length;
+    if (named > 0 && !confirm(`Replace the ${named} batter${named === 1 ? '' : 's'} already in the lineup?`)) return;
     setRosterBusy(true);
     setRosterError(null);
+    setRosterNote(null);
+    setRosterSuggestions([]);
     try {
-      const players = await fetchRoster(state.sheetsWebhookUrl, opposingTeam, ownerId);
-      if (players.length === 0) {
-        setRosterError(`No saved roster found for "${opposingTeam}" yet.`);
+      const found = await lookupRoster(state.sheetsWebhookUrl, teamName, ownerId);
+      if (found.players.length === 0) {
+        setRosterError(`No saved roster or past game found for "${teamName}".`);
+        setRosterSuggestions(found.suggestions.filter(t => t.toLowerCase() !== teamName.toLowerCase()));
         return;
       }
-      onLoadRoster(players.map((p: RosterPlayer) => ({ id: p.id, name: p.name, number: p.number, hand: p.hand })));
-      setRosterMenuOpen(false);
+      onLoadRoster(found.players.map((p: RosterPlayer) => ({ id: p.id, name: p.name, number: p.number, hand: p.hand })));
+      if (found.source === 'lastGame') {
+        const d = found.lastGameDate ? new Date(found.lastGameDate) : null;
+        const when = d && !isNaN(d.getTime()) ? ` on ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+        setRosterNote(`Loaded the batting order from your last game vs ${teamName}${when}. Check for changes, then tap "Save Current as Roster" to keep it.`);
+      } else {
+        setRosterMenuOpen(false);
+      }
     } catch (e) {
       setRosterError(String(e instanceof Error ? e.message : e));
     } finally {
       setRosterBusy(false);
     }
   }
+
 
   async function handleSaveRoster() {
     if (!state.sheetsWebhookUrl || !opposingTeam) return;
@@ -702,7 +716,9 @@ export function LineupPanel({
       const rosterPlayers: RosterPlayer[] = [];
       const idUpdates: { idx: number; player: Player }[] = [];
       for (const { p, idx } of named) {
-        const stableId = isRosterId(p!.id) ? p!.id : newRosterId();
+        // Keep a Players-database id (PLR…) — swapping it for a roster id
+        // would cut the link to his history.
+        const stableId = (isRosterId(p!.id) || isPlayerId(p!.id)) ? p!.id : newRosterId();
         if (stableId !== p!.id) idUpdates.push({ idx, player: { ...p!, id: stableId } });
         rosterPlayers.push({ id: stableId, name: p!.name.trim(), number: p!.number.trim(), hand: p!.hand ?? null });
       }
@@ -1078,12 +1094,28 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
             {rosterMenuOpen && (
               <div className="mt-1.5 p-2.5 rounded-xl bg-slate-900 border border-slate-700 space-y-2">
                 <p className="text-slate-500 text-[13px]">
-                  Load this team's known batters, or save the current lineup so it's ready next time you face them.
+                  Load this team's batters (their saved roster, or the batting order from your last game against them), or save the current lineup for next time.
                 </p>
                 {rosterError && <p className="text-red-400 text-[13px]">{rosterError}</p>}
+                {rosterNote && <p className="text-emerald-300 text-[13px]">✓ {rosterNote}</p>}
+                {rosterSuggestions.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-slate-400 text-[13px]">Did you mean:</p>
+                    {rosterSuggestions.map(t => (
+                      <button
+                        key={t}
+                        onClick={() => handleLoadRoster(t)}
+                        disabled={rosterBusy}
+                        className="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-300 text-[14px] font-medium disabled:opacity-50"
+                      >
+                        Load from “{t}”
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button
-                    onClick={handleLoadRoster}
+                    onClick={() => handleLoadRoster()}
                     disabled={rosterBusy}
                     className="flex-1 h-9 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-[14px] font-semibold"
                   >

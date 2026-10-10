@@ -12,6 +12,31 @@ export function newRosterId(): string {
   return `${ROSTER_ID_PREFIX}${crypto.randomUUID()}`;
 }
 
+export interface RosterLookup {
+  players: RosterPlayer[];
+  /** 'saved' = a Saved Roster; 'lastGame' = the batting order from the last game against them. */
+  source: 'saved' | 'lastGame' | '';
+  lastGameDate?: string;
+  /** Similarly named teams, when nothing was found under this name. */
+  suggestions: string[];
+}
+
+/** Like fetchRoster, with where the players came from and name suggestions. */
+export async function lookupRoster(webhookUrl: string, teamName: string, ownerId?: string): Promise<RosterLookup> {
+  if (!webhookUrl || !teamName.trim()) return { players: [], source: '', suggestions: [] };
+  const qs = new URLSearchParams({ url: webhookUrl, team: teamName.trim() });
+  if (ownerId) qs.set('owner', ownerId);
+  const res = await fetch(`/api/sheets/roster?${qs.toString()}`);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return {
+    players: (json.players ?? []) as RosterPlayer[],
+    source: json.source ?? ((json.players ?? []).length ? 'saved' : ''),
+    lastGameDate: json.lastGameDate || undefined,
+    suggestions: Array.isArray(json.suggestions) ? json.suggestions : [],
+  };
+}
+
 /**
  * Fetch the saved roster for an opposing team (scoped to the coach's
  * account). Returns [] if no roster has been saved for that team yet —
