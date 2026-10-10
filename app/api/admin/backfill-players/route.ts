@@ -56,10 +56,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const limit = Math.min(Math.max(Number(sp.get('limit')) || 3, 1), 15);
+    const limit = Math.min(Math.max(Number(sp.get('limit')) || 15, 1), 30);
     const url = resolveScriptUrl();
     const done: Array<Record<string, unknown>> = [];
+    // Each Sheet write takes a few seconds and grows with the Sheet, so stop
+    // starting new players once 35s have passed (the function limit is 60s).
+    const started = Date.now();
     for (const c of plan.clusters.slice(0, limit)) {
+      if (Date.now() - started > 35_000) break;
       const playerId = c.playerId || await createPlayer(url, scope, { name: c.name, number: c.number, hand: c.hand ?? '' });
       let linked = 0;
       for (const m of c.members) linked += await attach(url, scope, playerId, m.name, m.number, m.team);
