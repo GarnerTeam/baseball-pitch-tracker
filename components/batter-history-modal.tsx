@@ -282,6 +282,37 @@ interface Props {
   onClose: () => void;
 }
 
+// ── History cache ───────────────────────────────────────────────────────────
+// The Pitch screen prefetches the batter at the plate, so tapping his name
+// opens his history instantly instead of waiting on the network.
+const CACHE_MS = 5 * 60_000;
+const historyCache = new Map<string, { at: number; rows: Promise<PitchRow[]> }>();
+
+function historyKey(q: { playerName: string; playerNumber: string; webhookUrl: string; ownerId?: string; playerRosterId?: string }) {
+  return [q.webhookUrl, q.ownerId ?? '', q.playerRosterId ?? '', q.playerName.trim().toLowerCase(), q.playerNumber.trim()].join('|');
+}
+
+/** Fetches (or reuses a recent fetch of) a batter's stored pitches. */
+export function loadBatterHistory(q: { playerName: string; playerNumber: string; webhookUrl: string; ownerId?: string; playerRosterId?: string }): Promise<PitchRow[]> {
+  const key = historyKey(q);
+  const hit = historyCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rows;
+  const qs = new URLSearchParams({ url: q.webhookUrl, batter: q.playerName, num: q.playerNumber });
+  if (q.ownerId) qs.set('owner', q.ownerId);
+  // The player / roster id, when available, is the reliable identity signal —
+  // the backend matches on it exclusively rather than name/number guessing.
+  if (q.playerRosterId) qs.set('playerId', q.playerRosterId);
+  const rows = fetch(`/api/sheets/history?${qs}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) throw new Error(d.error);
+      return (d.pitches ?? []) as PitchRow[];
+    });
+  rows.catch(() => historyCache.delete(key));
+  historyCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────────
 export function BatterHistoryModal({
   playerName, playerNumber, webhookUrl,
@@ -306,16 +337,8 @@ export function BatterHistoryModal({
       setLoading(false);
       return;
     }
-    const qs = new URLSearchParams({ url: webhookUrl, batter: playerName, num: playerNumber });
-    if (ownerId) qs.set('owner', ownerId);
-    // Roster id, when available, is the reliable identity signal — the
-    // backend matches on it exclusively rather than name/number guessing.
-    if (playerRosterId) qs.set('playerId', playerRosterId);
-    fetch(`/api/sheets/history?${qs}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) throw new Error(d.error);
-        const allFromSheet: PitchRow[] = d.pitches ?? [];
+    loadBatterHistory({ playerName, playerNumber, webhookUrl, ownerId, playerRosterId })
+      .then(allFromSheet => {
         // Exclude today's game — those rows come from currentGamePitches prop
         const hist = currentGameId
           ? allFromSheet.filter(p => p.gameId !== currentGameId)
@@ -547,7 +570,7 @@ export function BatterHistoryModal({
               ? 'Loading…'
               : histPitches.length > 0
                 ? `${totalPitches} pitches · ${uniqueGames} game${uniqueGames !== 1 ? 's' : ''} · ${gridHand}HB`
-                : `${totalPitches} pitches (${currentGamePitches.length} today, 0 from sheet) · ${gridHand}HB`
+                : `${totalPitches} pitches (all from today — no earlier games) · ${gridHand}HB`
             }
           </p>
         </div>

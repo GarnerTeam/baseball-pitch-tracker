@@ -4,11 +4,14 @@ import { GameState, PitchType, SwingResult, ContactType, PitchLocation, AtBat, B
 import { PITCH_TYPE_COLORS, PITCH_TYPE_LABELS } from '@/types';
 import { PlayerHeader } from './player-header';
 import { CountDisplay } from './count-display';
-import { PitchRow } from './pitch-row';
 import { PitchHistoryStrip } from './pitch-history-strip';
 import { StrikeZone } from './strike-zone';
 import { PitchControls } from './pitch-controls';
 import { PitcherStatsModal } from './pitcher-stats-modal';
+import { BatterHistoryModal, loadBatterHistory } from './batter-history-modal';
+import { toPitchRowLite } from '@/lib/sheets';
+import { isRosterId } from '@/lib/roster';
+import { isPlayerId } from '@/lib/players';
 
 interface PitchScreenProps {
   state: GameState;
@@ -71,31 +74,6 @@ function KLabel({ swing }: { swing: boolean }) {
   return <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>K</span>;
 }
 
-function getResultBadge(ab: AtBat): React.ReactNode {
-  if (ab.result === 'in-play') {
-    const hd = ab.pitches.find(p => p.hitData)?.hitData;
-    if (!hd) return '⚾ IP';
-    const icon = HIT_RESULT_ICONS[hd.result] ?? '';
-    const zone = hd.zone ? (HIT_ZONE_ABBR[hd.zone] ?? hd.zone) : '';
-    return `${icon}${zone ? ' · ' + zone : ''}`;
-  }
-  if (ab.result === 'strikeout') {
-    const last = ab.pitches[ab.pitches.length - 1];
-    return <>🔴 <KLabel swing={last ? last.swing : true} /></>;
-  }
-  const m: Record<string, string> = { walk: '🔵 BB', 'manual-end': '—' };
-  return m[ab.result ?? ''] ?? '—';
-}
-
-function getResultColor(ab: AtBat): string {
-  if (ab.result === 'strikeout') return 'text-red-400';
-  if (ab.result === 'walk') return 'text-sky-400';
-  if (ab.result === 'in-play') {
-    const r = ab.pitches.find(p => p.hitData)?.hitData?.result;
-    return r === 'out' || r === 'error' ? 'text-slate-400' : 'text-yellow-400';
-  }
-  return 'text-slate-400';
-}
 
 function getBallLabel(row: number, col: number, hand?: 'L' | 'R' | null): string {
   const v = row === 0 ? 'Up' : row === 4 ? 'Low' : '';
@@ -246,9 +224,21 @@ export function PitchScreen({
   const [showBatterHistory, setShowBatterHistory] = useState(false);
   const [showPitcherStats, setShowPitcherStats] = useState(false);
 
-  const completedABs = allAtBats
-    .filter(ab => _matchesBatter(ab) && ab.isComplete && ab.pitches.length > 0)
-    .sort((a, b) => b.atBatNumber - a.atBatNumber);
+  // ── Batter history & tendencies (tap the batter's name) ──────────────────
+  const hasBatter = !!batter.name && batter.name !== 'Add Batter';
+  const historyId = (isRosterId(batter.id) || isPlayerId(batter.id)) ? batter.id : undefined;
+  const historyQuery = { playerName: batter.name, playerNumber: batter.number ?? '', webhookUrl: state.sheetsWebhookUrl, playerRosterId: historyId };
+  // Fetch in the background as soon as he comes to the plate.
+  useEffect(() => {
+    if (hasBatter && state.sheetsWebhookUrl) loadBatterHistory(historyQuery).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBatter, batter.name, batter.number, historyId, state.sheetsWebhookUrl]);
+  // This game's pitches to him, same match as the Lineup tab's Full History.
+  const todaysPitches = hasBatter
+    ? [...allAtBats.flatMap(ab => ab.pitches), ...(currentAtBat?.pitches ?? [])]
+        .filter(p => p.batterName === batter.name && p.batterNumber === batter.number)
+        .map(toPitchRowLite)
+    : [];
 
   // ── Auto-scroll to contact buttons when swing is selected ──────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -374,7 +364,7 @@ export function PitchScreen({
       {/* Batter name bar — between pitch grid and pitch type buttons */}
       <div className="flex-shrink-0 px-3 py-1.5 flex items-center justify-between border-t border-slate-800 bg-slate-950">
         <button
-          onClick={() => setShowBatterHistory(true)}
+          onClick={() => { if (hasBatter) setShowBatterHistory(true); else onTabChange('lineup'); }}
           className="flex items-center gap-2 min-w-0 active:opacity-70 transition-opacity"
         >
           <span className="text-slate-200 text-[21px] font-semibold truncate flex-1 min-w-0">
@@ -387,8 +377,8 @@ export function PitchScreen({
               #{batter.number?.trim() || '—'}
             </span>
           )}
-          {batter.name && batter.name !== 'Add Batter' && (
-            <span className="text-slate-500 text-[15px] flex-shrink-0">▼</span>
+          {hasBatter && (
+            <span className="text-indigo-300 text-[13px] font-semibold flex-shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-950 border border-indigo-800">📊 History</span>
           )}
         </button>
         <span className="text-amber-400 text-[18px] font-bold flex-shrink-0 ml-2">
@@ -587,54 +577,14 @@ export function PitchScreen({
         </div>
       )}
 
-      {/* ── Batter History Modal ── */}
-      {showBatterHistory && (
-        <div className="absolute inset-0 bg-black/80 z-50 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-700 flex-shrink-0">
-            <div>
-              <p className="text-slate-100 font-bold text-[21px]">{batter.name}</p>
-              <p className="text-slate-400 text-[18px]">#{batter.number} · {completedABs.length} previous at-bat{completedABs.length !== 1 ? 's' : ''}</p>
-            </div>
-            <button
-              onClick={() => setShowBatterHistory(false)}
-              className="w-9 h-9 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-[27px] font-bold flex items-center justify-center"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {completedABs.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-500 text-[21px]">No previous at-bats yet</p>
-                <p className="text-slate-600 text-[18px] mt-1">History will appear here after each at-bat</p>
-              </div>
-            ) : (
-              completedABs.map(ab => (
-                <div key={ab.id} className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 bg-slate-800 border-b border-slate-700">
-                    <p className="text-slate-400 text-[18px] font-medium">
-                      AB #{ab.atBatNumber} · {ab.pitches.length} pitch{ab.pitches.length !== 1 ? 'es' : ''}
-                    </p>
-                    <span className={`text-[18px] font-bold ${getResultColor(ab)}`}>
-                      {getResultBadge(ab)}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5 px-3 pb-1">
-                    {ab.pitches.map((pitch, i) => (
-                      <PitchRow
-                        key={pitch.id}
-                        pitch={pitch}
-                        index={i}
-                        playerHand={batter.hand}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+      {/* ── Batter History & Tendencies ── */}
+      {showBatterHistory && hasBatter && (
+        <BatterHistoryModal
+          {...historyQuery}
+          currentGameId={state.id}
+          currentGamePitches={todaysPitches}
+          onClose={() => setShowBatterHistory(false)}
+        />
       )}
 
       {/* Pitcher stats modal */}

@@ -48,7 +48,7 @@ function getBatterAtBatNumber(allAtBats: AtBat[], batterIndex: number): number {
   return allAtBats.filter((ab) => ab.batterIndex === batterIndex && ab.isComplete).length + 1;
 }
 
-function createInitialState(): GameState {
+export function createInitialState(): GameState {
   return {
     id: `game-${genId()}`,
     phase: 'setup',
@@ -98,7 +98,7 @@ type GameAction =
   | { type: 'SET_TAB'; tab: GameState['activeTab'] }
   | { type: 'CLEAR_NOTIFICATION' }
   | { type: 'SET_SHEETS_URL'; url: string }
-  | { type: 'MARK_SYNCED'; pitchIds: string[] }
+  | { type: 'MARK_SYNCED'; entries: PitchRecord[] }
   | { type: 'SET_BATTER_HAND'; hand: 'L' | 'R' | null }
   | { type: 'UNDO_PITCH' }
   | { type: 'PREV_BATTER' }
@@ -108,6 +108,15 @@ type GameAction =
   | { type: 'EDIT_PITCH'; atBatId: string; pitchId: string; updates: Partial<PitchRecord> }
   | { type: 'LOAD_ROSTER'; players: Player[] }
   | { type: 'RESUME_GAME'; game: GameState; message: string };
+
+/**
+ * Undoing a pitch: drop anything still waiting to upload for it and queue a
+ * removal, so a pitch that already reached the cloud is deleted there too
+ * (removing one that never arrived is harmless).
+ */
+function queueUndo(queue: PitchRecord[], removed: PitchRecord): PitchRecord[] {
+  return [...queue.filter(p => p.id !== removed.id), { ...removed, isEdit: false, isDelete: true }];
+}
 
 function resetPendingPitch(state: GameState) {
   return {
@@ -169,7 +178,7 @@ function advanceToNextBatter(state: GameState, completedAtBat: AtBat): GameState
   };
 }
 
-function gameReducer(state: GameState, action: GameAction): GameState {
+export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME': {
       const gameId = `game-${genId()}`;
@@ -602,11 +611,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_SHEETS_URL':
       return { ...state, sheetsWebhookUrl: action.url };
 
-    case 'MARK_SYNCED':
-      return {
-        ...state,
-        syncQueue: state.syncQueue.filter((p) => !action.pitchIds.includes(p.id)),
-      };
+    case 'MARK_SYNCED': {
+      // Remove exactly the queue entries that were uploaded (by reference),
+      // so an undo marker or a second edit queued for the same pitch while
+      // the upload was in flight is kept for the next upload.
+      const done = new Set(action.entries);
+      return { ...state, syncQueue: state.syncQueue.filter((p) => !done.has(p)) };
+    }
 
     case 'UNDO_PITCH': {
       // ── Case 1: Current at-bat has pitches — undo last pitch ─────────────
@@ -627,7 +638,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           },
           // Restore outs count to what it was before this pitch was recorded
           outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
-          syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
+          syncQueue: queueUndo(state.syncQueue, removed),
           notification: null,
         };
       }
@@ -667,7 +678,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         currentBatterIndex: prevAB.batterIndex,
         allAtBats: state.allAtBats.filter(ab => ab.id !== prevAB.id),
         outsCount: (removed.outsCount ?? state.outsCount) as 0 | 1 | 2,
-        syncQueue: state.syncQueue.filter(p => p.id !== removed.id),
+        syncQueue: queueUndo(state.syncQueue, removed),
         notification: null,
         phase: 'pitching',
       };
@@ -763,8 +774,7 @@ export function useGame() {
     syncQueueToSheets(state.sheetsWebhookUrl, snapshot).then(({ synced, error, _urlTail }) => {
       isSyncing.current = false;
       if (synced > 0) {
-        const ids = snapshot.slice(0, synced).map((p) => p.id);
-        dispatch({ type: 'MARK_SYNCED', pitchIds: ids });
+        dispatch({ type: 'MARK_SYNCED', entries: snapshot.slice(0, synced) });
         const urlNote = _urlTail ? ` (…${_urlTail.slice(-15)})` : '';
         setSyncStatus({ ok: true, message: `Synced ${synced} pitch${synced !== 1 ? 'es' : ''}${urlNote}`, ts: Date.now() });
         console.log('[sync] success. url tail:', _urlTail, '| pitches:', synced);
@@ -833,7 +843,7 @@ export function useGame() {
     isSyncing.current = true;
     try {
       const { synced, error } = await syncQueueToSheets(stateRef.current.sheetsWebhookUrl || DEFAULT_WEBHOOK_URL, queue);
-      if (synced > 0) dispatch({ type: 'MARK_SYNCED', pitchIds: queue.slice(0, synced).map(p => p.id) });
+      if (synced > 0) dispatch({ type: 'MARK_SYNCED', entries: queue.slice(0, synced) });
       if (synced < queue.length) return error ?? 'Some pitches did not upload';
       return null;
     } finally {
