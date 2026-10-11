@@ -8,7 +8,7 @@ import { BatterHistoryModal } from '@/components/batter-history-modal';
 import { BatterFigureIcon } from '@/components/strike-zone';
 import { toPitchRowLite, PitchRowLite } from '@/lib/sheets';
 import { lookupRoster, saveRoster, isRosterId, newRosterId } from '@/lib/roster';
-import { fetchPlayers, createPlayer, isPlayerId } from '@/lib/players';
+import { fetchPlayers, createPlayer, isPlayerId, updatePlayerProfile } from '@/lib/players';
 import { RosterPlayer, PlayerRecord } from '@/types';
 import { LineupImportModal } from '@/components/lineup-import-modal';
 
@@ -599,6 +599,8 @@ export function LineupPanel({
   const [slotForm, setSlotForm] = useState<SlotFormState>({ name: '', num: '', hand: null, playerId: null });
   const [slotSaving, setSlotSaving] = useState(false);
   const [slotSaveError, setSlotSaveError] = useState<string | null>(null);
+  // Slot whose edited name needs "same player or different player?" answered.
+  const [identityChoice, setIdentityChoice] = useState<number | null>(null);
   const [extraSlots, setExtraSlots] = useState(0);
 
   // ── Persistent Player database (autocomplete + cross-game/season/team
@@ -645,8 +647,15 @@ export function LineupPanel({
     const trimmedName = name.trim();
     if (!trimmedName || !state.sheetsWebhookUrl) return existingId ?? crypto.randomUUID();
 
-    const exactMatch = knownPlayers.find(p => p.name.trim().toLowerCase() === trimmedName.toLowerCase());
-    if (exactMatch) return exactMatch.id;
+    // Reuse an existing record only when it's unambiguous: same name and
+    // same number, or the only player with that name when either number is
+    // blank. Otherwise create a new record — a duplicate can be merged later
+    // on the Players screen, but two players sharing one id can't be untangled.
+    const num = number.trim();
+    const sameName = knownPlayers.filter(p => p.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    const sameNumber = sameName.filter(p => p.number.trim() === num);
+    if (sameNumber.length === 1) return sameNumber[0].id;
+    if (sameName.length === 1 && (!num || !sameName[0].number.trim())) return sameName[0].id;
 
     try {
       const created = await createPlayer(state.sheetsWebhookUrl, { name: trimmedName, number: number.trim(), hand });
@@ -874,12 +883,42 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
     setSlotSaveError(null);
   }
 
-  async function handleEditExistingSave(idx: number, currentPlayer: Player) {
-    // Name and number are optional
+  /**
+   * Saving an edited slot. A typed (not picked) name change on a player who
+   * already has a permanent id is ambiguous — fixing a spelling, or a
+   * different kid in this spot? — so the coach is asked, and the id is only
+   * kept for "same player". A different player never inherits the old id.
+   */
+  async function handleEditExistingSave(idx: number, currentPlayer: Player, choice?: 'same' | 'different') {
+    const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ');
+    const stable = isRosterId(currentPlayer.id) || isPlayerId(currentPlayer.id);
+    const picked = slotForm.playerId && slotForm.playerId !== currentPlayer.id ? slotForm.playerId : null;
+    const nameChanged = norm(slotForm.name) !== norm(currentPlayer.name);
+    if (!picked && stable && nameChanged && currentPlayer.name.trim() && !choice) {
+      setIdentityChoice(idx);
+      return;
+    }
+    setIdentityChoice(null);
     setSlotSaving(true);
     setSlotSaveError(null);
     try {
-      const id = await resolvePlayerIdentity(slotForm.name, slotForm.num, slotForm.hand, slotForm.playerId, currentPlayer.id);
+      let id: string;
+      if (picked) {
+        id = picked;
+      } else if (!nameChanged || choice === 'same') {
+        id = stable ? currentPlayer.id : await resolvePlayerIdentity(slotForm.name, slotForm.num, slotForm.hand, null, currentPlayer.id);
+        // Fix the spelling / number on his permanent record too.
+        if (isPlayerId(currentPlayer.id) && state.sheetsWebhookUrl && slotForm.name.trim()
+            && (nameChanged || slotForm.num.trim() !== currentPlayer.number.trim())) {
+          const patch = { name: slotForm.name.trim(), number: slotForm.num.trim() };
+          updatePlayerProfile(state.sheetsWebhookUrl, currentPlayer.id, patch)
+            .then(rec => setKnownPlayers(prev => prev.map(p => p.id === rec.id ? { ...p, ...rec, teams: p.teams } : p)))
+            .catch(() => { /* the lineup still shows the fix; the record can be edited on the Players screen */ });
+        }
+      } else {
+        // A different player: his own record (found or new), never the old id.
+        id = await resolvePlayerIdentity(slotForm.name, slotForm.num, slotForm.hand, null);
+      }
       const player: Player = { ...currentPlayer, id, name: slotForm.name.trim(), number: slotForm.num.trim(), hand: slotForm.hand ?? currentPlayer.hand };
       onSetBatterAt(idx, player);
       setExpanded(null);
@@ -888,6 +927,7 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
       setSlotSaving(false);
     }
   }
+
 
   // ── Drag helpers ───────────────────────────────────────────────────────
   function handleDragHandleTouchStart(e: React.TouchEvent, idx: number) {
@@ -1401,7 +1441,7 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                   <div className="bg-slate-950 px-3 py-2.5">
                     <p className="text-blue-400/90 text-[18px] mb-2 font-medium">
                       Edit slot {idx + 1}
-                      <span className="text-slate-500 font-normal"> — corrects name / number only, history is kept</span>
+                      <span className="text-slate-500 font-normal"> — fix a name or number. For a different batter, use Sub.</span>
                     </p>
                     <div className="flex gap-2">
                       <input
@@ -1413,8 +1453,8 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                       />
                       <PlayerNameInput
                         value={slotForm.name}
-                        onTextChange={v => setSlotForm(s => ({ ...s, name: v, playerId: null }))}
-                        onPick={p => setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id }))}
+                        onTextChange={v => { setIdentityChoice(null); setSlotForm(s => ({ ...s, name: v, playerId: null })); }}
+                        onPick={p => { setIdentityChoice(null); setSlotForm(s => ({ ...s, name: p.name, num: p.number, hand: p.hand, playerId: p.id })); }}
                         players={knownPlayers}
                         team={opposingTeam}
                         placeholder="Player name (optional)"
@@ -1428,6 +1468,29 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                         className="px-3 h-10 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-[27px] flex-shrink-0"
                       >{slotSaving ? '…' : '✓'}</button>
                     </div>
+                    {identityChoice === idx && (
+                      <div className="mt-2 rounded-xl border border-amber-700 bg-amber-950/40 p-2.5 space-y-2">
+                        <p className="text-amber-200 text-[15px]">
+                          <span className="font-semibold">{player.name}</span> → <span className="font-semibold">{slotForm.name.trim() || '(no name)'}</span>: is this the same player?
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditExistingSave(idx, player, 'same')}
+                            className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 text-[14px] font-semibold"
+                          >
+                            Same player
+                            <span className="block text-slate-400 text-[12px] font-normal">fixing the spelling</span>
+                          </button>
+                          <button
+                            onClick={() => handleEditExistingSave(idx, player, 'different')}
+                            className="flex-1 py-2 rounded-lg bg-blue-800 hover:bg-blue-700 border border-blue-600 text-white text-[14px] font-semibold"
+                          >
+                            Different player
+                            <span className="block text-blue-200 text-[12px] font-normal">keeps both histories apart</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {slotSaveError && (
                       <p className="text-amber-400 text-[13px] mt-1.5">{slotSaveError}</p>
                     )}
