@@ -1,10 +1,12 @@
 'use client';
 import { useState } from 'react';
 import type { EndGameResult } from '@/hooks/use-game';
+import { Matchup } from '@/components/matchup';
 
 interface EndGameModalProps {
   homeTeam: string;
   visitingTeam: string;
+  weAreHome?: boolean;
   pitches: number;
   atBats: number;
   /** Pitches recorded but not uploaded yet. */
@@ -20,16 +22,14 @@ interface EndGameModalProps {
  * finished, and only then clears the device — with a receipt saying how
  * many pitches are stored. If anything fails, the game stays open.
  */
-export function EndGameModal({ homeTeam, visitingTeam, pitches, atBats, waiting, onEnd, onClose, onViewGame }: EndGameModalProps) {
+export function EndGameModal({ homeTeam, visitingTeam, weAreHome, pitches, atBats, waiting, onEnd, onClose, onViewGame }: EndGameModalProps) {
   const [step, setStep] = useState<'confirm' | 'saving' | 'done' | 'error'>('confirm');
   const [result, setResult] = useState<EndGameResult | null>(null);
 
   const matchup = (
-    <p className="text-[19px] font-semibold text-center">
-      <span className="text-emerald-300">{homeTeam || 'Home'}</span>
-      <span className="text-slate-500 mx-2">vs</span>
-      <span className="text-blue-300">{visitingTeam || 'Away'}</span>
-    </p>
+    <div className="flex justify-center">
+      <Matchup myTeam={homeTeam} opponent={visitingTeam} weAreHome={weAreHome} center />
+    </div>
   );
 
   async function handleEnd() {

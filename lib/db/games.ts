@@ -12,11 +12,12 @@ export interface SavedGameSummary {
   pitchCount: number;
   updatedAt: string;
   endedAt: string;
+  weAreHome: boolean | null;
 }
 
 interface GameRow {
   game_id: string; home_team: string; visiting_team: string; status: string;
-  pitch_count: number; updated_at: unknown; ended_at: unknown; snapshot?: unknown;
+  pitch_count: number; updated_at: unknown; ended_at: unknown; snapshot?: unknown; we_are_home?: string | null;
 }
 
 function iso(v: unknown): string {
@@ -34,6 +35,7 @@ function summary(r: GameRow): SavedGameSummary {
     pitchCount: Number(r.pitch_count) || 0,
     updatedAt: iso(r.updated_at),
     endedAt: iso(r.ended_at),
+    weAreHome: r.we_are_home === 'true' ? true : r.we_are_home === 'false' ? false : null,
   };
 }
 
@@ -91,7 +93,7 @@ export async function endGame(db: Db, scope: Scope, gameId: string): Promise<boo
 /** Games still in progress, most recently touched first. */
 export async function listActiveGames(db: Db, scope: Scope): Promise<SavedGameSummary[]> {
   const rows = await db.query<GameRow>(
-    `SELECT game_id, home_team, visiting_team, status, pitch_count, updated_at, ended_at
+    `SELECT game_id, home_team, visiting_team, status, pitch_count, updated_at, ended_at, snapshot->>'weAreHome' AS we_are_home
      FROM games WHERE org_id = $1 AND status = 'active'
      ORDER BY updated_at DESC LIMIT 20`,
     [scope.organizationId],
@@ -102,7 +104,7 @@ export async function listActiveGames(db: Db, scope: Scope): Promise<SavedGameSu
 /** One saved game with its snapshot, or null. */
 export async function getSavedGame(db: Db, scope: Scope, gameId: string) {
   const [r] = await db.query<GameRow>(
-    `SELECT game_id, home_team, visiting_team, status, pitch_count, updated_at, ended_at, snapshot
+    `SELECT game_id, home_team, visiting_team, status, pitch_count, updated_at, ended_at, snapshot, snapshot->>'weAreHome' AS we_are_home
      FROM games WHERE org_id = $1 AND game_id = $2`,
     [scope.organizationId, gameId],
   );

@@ -18,6 +18,7 @@ export interface SavedGameSummary {
   pitchCount: number;
   updatedAt: string;
   endedAt: string;
+  weAreHome?: boolean | null;
 }
 
 // ── Snapshot ─────────────────────────────────────────────────────────────────

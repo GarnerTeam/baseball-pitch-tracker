@@ -261,9 +261,9 @@ export async function getGameScout(db: Db, scope: Scope, gameId: string) {
 export async function getGamesList(db: Db, scope: Scope) {
   const rows = await db.query<{
     game_id: string; home_team: string | null; visiting_team: string | null;
-    first_ts: unknown; last_ts: unknown; pitch_count: number; status: string | null;
+    first_ts: unknown; last_ts: unknown; pitch_count: number; status: string | null; we_are_home: string | null;
   }>(
-    `SELECT x.*, g.status FROM (
+    `SELECT x.*, g.status, g.snapshot->>'weAreHome' AS we_are_home FROM (
        SELECT game_id,
               -- the most recently recorded non-blank name (names can be filled in mid-game)
               (array_agg(home_team ORDER BY COALESCE(ts, created_at) DESC, created_at DESC) FILTER (WHERE home_team <> ''))[1] AS home_team,
@@ -286,6 +286,7 @@ export async function getGamesList(db: Db, scope: Scope) {
     // 'active' = still open (resumable), 'final' = ended with End Game,
     // '' = recorded before games were saved.
     status: r.status ?? '',
+    weAreHome: r.we_are_home === 'true' ? true : r.we_are_home === 'false' ? false : null,
   }));
   return { games, count: games.length };
 }
@@ -681,4 +682,35 @@ export async function planPlayerBackfill(db: Db, scope: Scope) {
     toLinkToExisting: out.filter(c => c.playerId).length,
     pitchesToLink: out.reduce((s, c) => s + c.pitchCount, 0),
   };
+}
+
+// ── Admin cleanup ───────────────────────────────────────────────────────────
+
+/** Games (any organization) with at most `maxPitches` pitches — test games. */
+export async function listSmallGames(db: Db, maxPitches: number) {
+  const rows = await db.query<{ game_id: string; org_id: string; user_id: string; home_team: string; visiting_team: string; pitch_count: number; last_ts: unknown }>(
+    `SELECT game_id, min(org_id) AS org_id, min(user_id) AS user_id,
+            max(home_team) AS home_team, max(visiting_team) AS visiting_team,
+            count(*)::int AS pitch_count, max(COALESCE(ts, created_at)) AS last_ts
+     FROM pitches WHERE game_id <> ''
+     GROUP BY game_id HAVING count(*) <= $1
+     ORDER BY max(COALESCE(ts, created_at))`,
+    [maxPitches],
+  );
+  return rows.map(r => ({
+    gameId: r.game_id, organizationId: r.org_id, userId: r.user_id,
+    homeTeam: r.home_team, visitingTeam: r.visiting_team,
+    pitches: Number(r.pitch_count), lastTimestamp: formatTs(r.last_ts),
+  }));
+}
+
+/**
+ * Deletes games' pitches and saved snapshots. Returns every deleted pitch
+ * (Sheet shape) so the caller can keep a backup.
+ */
+export async function deleteGames(db: Db, gameIds: string[]) {
+  if (gameIds.length === 0) return { pitches: [] as Record<string, unknown>[], savedGames: 0 };
+  const gone = await db.query(`DELETE FROM pitches WHERE game_id = ANY($1::text[]) RETURNING *`, [gameIds]);
+  const games = await db.query(`DELETE FROM games WHERE game_id = ANY($1::text[]) RETURNING game_id`, [gameIds]);
+  return { pitches: gone.map(pitchRowToSheet), savedGames: games.length };
 }

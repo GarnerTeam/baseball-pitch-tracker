@@ -10,6 +10,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/admin/import-sheet',  // checks admin session OR one-time import token itself
   '/api/admin/backfill-players', // same
   '/api/admin/players',          // same
+  '/api/admin/cleanup-games',    // same
   '/api/version',                // deployed version, for the update banner
 ]);
 

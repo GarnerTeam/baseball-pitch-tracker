@@ -15,6 +15,7 @@ import { NotificationToast } from '@/components/notification-toast';
 import { PastGamesBrowser } from '@/components/past-games-browser';
 import { PlayerProfileScreen } from '@/components/player-profile-screen';
 import { EndGameModal } from '@/components/end-game-modal';
+import { matchupText } from '@/components/matchup';
 import { loadResumableGame, loadReadOnlyGame, pitchCountOf, atBatCountOf } from '@/lib/games';
 import { useOrganization, useUser } from '@clerk/nextjs';
 
@@ -52,11 +53,11 @@ export default function App() {
 
   // End Game — the numbers are captured when it opens, because the live
   // game is cleared as soon as it's saved.
-  const [endInfo, setEndInfo] = useState<{ pitches: number; atBats: number; waiting: number; homeTeam: string; visitingTeam: string } | null>(null);
+  const [endInfo, setEndInfo] = useState<{ pitches: number; atBats: number; waiting: number; homeTeam: string; visitingTeam: string; weAreHome?: boolean } | null>(null);
   function openEndGame() {
     setEndInfo({
       pitches: pitchCountOf(state), atBats: atBatCountOf(state), waiting: state.syncQueue.length,
-      homeTeam: state.homeTeam, visitingTeam: state.visitingTeam,
+      homeTeam: state.homeTeam, visitingTeam: state.visitingTeam, weAreHome: state.weAreHome,
     });
   }
 
@@ -84,7 +85,7 @@ export default function App() {
     if (status === 'final' && !confirm('This game was ended. Reopen it and keep tracking?')) return null;
     if (loaded.rebuilt && !confirm('This game was recorded before games were saved, so it will be rebuilt from its pitches. Check the outs, runners and current batter before you continue.')) return null;
     if (state.phase !== 'setup' && pitchCountOf(state) + state.lineup.filter(p => p.name.trim()).length > 0
-        && !confirm(`Switch games? ${state.homeTeam || 'Home'} vs ${state.visitingTeam || 'Away'} is saved and stays under "Continue a Game" on the start screen.`)) {
+        && !confirm(`Switch games? ${matchupText(state.homeTeam, state.visitingTeam, state.weAreHome)} is saved and stays under "Continue a Game" on the start screen.`)) {
       return null;
     }
     const err = await resumeGame(loaded.state, { reopen: true, rebuilt: loaded.rebuilt });
@@ -148,7 +149,7 @@ export default function App() {
           </button>
           <div className="flex-1 min-w-0">
             <p className="text-amber-200 text-[15px] font-bold truncate">
-              🔒 {historyState.homeTeam || 'Home'} vs {historyState.visitingTeam || 'Away'} — Game Completed
+              🔒 {matchupText(historyState.homeTeam, historyState.visitingTeam, historyState.weAreHome)} — Game Completed
             </p>
           </div>
         </div>

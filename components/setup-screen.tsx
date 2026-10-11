@@ -2,9 +2,10 @@
 import { UserButton } from '@clerk/nextjs';
 import { useState, useEffect, useRef } from 'react';
 import { fetchActiveGames, markGameEnded, SavedGameSummary } from '@/lib/games';
+import { Matchup, matchupText } from '@/components/matchup';
 
 interface SetupScreenProps {
-  onStart: (homeTeam: string, visitingTeam: string) => void;
+  onStart: (homeTeam: string, visitingTeam: string, weAreHome: boolean) => void;
   webhookUrl: string;
   onViewPastGames: () => void;
   /** Loads and switches to a saved game; resolves to an error message or null. */
@@ -48,7 +49,7 @@ function ContinueGames({ onResume }: { onResume: (gameId: string) => Promise<str
   }
 
   async function dismiss(g: SavedGameSummary) {
-    if (!confirm(`Mark ${g.homeTeam || 'Home'} vs ${g.visitingTeam || 'Away'} as ended? Its pitches stay saved in Past Games.`)) return;
+    if (!confirm(`Mark ${matchupText(g.homeTeam, g.visitingTeam, g.weAreHome)} as ended? Its pitches stay saved in Past Games.`)) return;
     try {
       await markGameEnded(g.gameId);
       setGames(list => list.filter(x => x.gameId !== g.gameId));
@@ -63,11 +64,7 @@ function ContinueGames({ onResume }: { onResume: (gameId: string) => Promise<str
       {games.slice(0, 5).map(g => (
         <div key={g.gameId} className="flex items-center gap-2 px-4 py-2.5 border-t border-amber-900/50">
           <div className="flex-1 min-w-0">
-            <p className="text-[17px] font-semibold truncate">
-              <span className="text-emerald-300">{g.homeTeam || 'Home'}</span>
-              <span className="text-slate-500 mx-1">vs</span>
-              <span className="text-blue-300">{g.visitingTeam || 'Away'}</span>
-            </p>
+            <Matchup myTeam={g.homeTeam} opponent={g.visitingTeam} weAreHome={g.weAreHome} size={17} />
             <p className="text-slate-400 text-[13px]">
               {g.pitchCount} pitch{g.pitchCount === 1 ? '' : 'es'}{whenLabel(g.updatedAt) && <> · {whenLabel(g.updatedAt)}</>}
             </p>
@@ -161,6 +158,7 @@ function TeamNameInput({
 export function SetupScreen({ onStart, webhookUrl, onViewPastGames, onResume }: SetupScreenProps) {
   const [home, setHome]         = useState('');
   const [visiting, setVisiting] = useState('');
+  const [weAreHome, setWeAreHome] = useState(true);
   const [knownTeams, setKnownTeams] = useState<string[]>([]);
 
   const canStart    = home.trim().length > 0 && visiting.trim().length > 0;
@@ -195,7 +193,7 @@ export function SetupScreen({ onStart, webhookUrl, onViewPastGames, onResume }: 
 
   function handleStart() {
     if (!canStart) return;
-    onStart(home.trim(), visiting.trim());
+    onStart(home.trim(), visiting.trim(), weAreHome);
   }
 
   return (
@@ -218,7 +216,7 @@ export function SetupScreen({ onStart, webhookUrl, onViewPastGames, onResume }: 
 
           <div className="px-4 pt-4 pb-3">
             <label className="block text-[16px] font-bold uppercase tracking-widest text-emerald-400 mb-2">
-              🏠 My Team
+              ⚾ My Team
             </label>
             <TeamNameInput
               value={home}
@@ -250,13 +248,28 @@ export function SetupScreen({ onStart, webhookUrl, onViewPastGames, onResume }: 
           </div>
         </div>
 
+        {/* Home or away */}
+        <div>
+          <p className="text-[14px] font-bold uppercase tracking-widest text-slate-400 mb-2 text-center">We are</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ v: true, label: '🏠 Home' }, { v: false, label: '🚌 Away' }].map(o => (
+              <button
+                key={o.label}
+                type="button"
+                onClick={() => setWeAreHome(o.v)}
+                className={`h-11 rounded-xl text-[18px] font-bold border transition-colors ${weAreHome === o.v ? 'bg-blue-700 border-blue-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'}`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Preview */}
         {canStart && (
-          <p className="text-center text-slate-400 text-[18px]">
-            <span className="text-emerald-300 font-semibold">{home.trim()}</span>
-            <span className="text-slate-600 mx-2">vs</span>
-            <span className="text-blue-300 font-semibold">{visiting.trim()}</span>
-          </p>
+          <div className="flex justify-center">
+            <Matchup myTeam={home.trim()} opponent={visiting.trim()} weAreHome={weAreHome} size={18} center />
+          </div>
         )}
 
         {/* Start button */}
