@@ -156,6 +156,10 @@ export interface PitchRowLite {
   hitX?: number | string;
   hitY?: number | string;
   atBatNumber?: number | string;
+  pitchNumber?: number | string;
+  ballsBefore?: number | string;
+  strikesBefore?: number | string;
+  hitZone?: string;
 }
 
 /**
@@ -180,5 +184,9 @@ export function toPitchRowLite(p: PitchRecord): PitchRowLite {
     hitX:          f.hitX  !== '' ? f.hitX  : undefined,
     hitY:          f.hitY  !== '' ? f.hitY  : undefined,
     atBatNumber:   f.atBatNumber,
+    pitchNumber:   f.pitchNumber,
+    ballsBefore:   f.ballsBefore,
+    strikesBefore: f.strikesBefore,
+    hitZone:       f.hitZone || undefined,
   };
 }

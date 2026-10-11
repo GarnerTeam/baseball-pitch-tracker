@@ -583,6 +583,7 @@ export function PitchScreen({
           {...historyQuery}
           currentGameId={state.id}
           currentGamePitches={todaysPitches}
+          batterHand={batterHand ?? batter.hand ?? null}
           onClose={() => setShowBatterHistory(false)}
         />
       )}
