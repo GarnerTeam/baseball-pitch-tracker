@@ -1,6 +1,7 @@
 'use client';
 import { Player, PitchRecord, AtBat } from '@/types';
 import { PitchTypeBarChart, buildPitchTypeStats } from '@/components/pitch-type-chart';
+import { PitcherFaceOffs } from '@/components/pitcher-faceoffs';
 
 interface PitcherStatsModalProps {
   pitcher: Player;
@@ -29,7 +30,7 @@ export function PitcherStatsModal({ pitcher, allAtBats, currentAtBat, onClose }:
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-slate-900 rounded-t-2xl border-t border-slate-700 p-5 pb-8 space-y-4"
+        className="w-full max-w-md max-h-[88dvh] overflow-y-auto bg-slate-900 rounded-t-2xl border-t border-slate-700 p-5 pb-8 space-y-4"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -60,6 +61,12 @@ export function PitcherStatsModal({ pitcher, allAtBats, currentAtBat, onClose }:
             </div>
           ))}
         </div>
+
+        {/* Every plate appearance against him */}
+        <PitcherFaceOffs
+          pitches={allPitches}
+          allGamePitches={[...allAtBats.flatMap(ab => ab.pitches), ...(currentAtBat?.pitches ?? [])]}
+        />
 
         {/* Pitch type breakdown */}
         {typeStats.length > 0 ? (

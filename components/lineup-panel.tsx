@@ -586,6 +586,11 @@ export function LineupPanel({
 
   // ── Pitcher stats popup state ────────────────────────────────────────────────────
   const [statsPitcher, setStatsPitcher] = useState<Player | null>(null);
+  // Label each at-bat with its pitcher when more than one pitched this game.
+  const multiplePitchers = new Set(
+    [...allAtBats.flatMap((ab: AtBat) => ab.pitches), ...(currentAtBat?.pitches ?? [])]
+      .map(p => `${p.pitcherName}|${p.pitcherNumber}`).filter(k => k !== '|'),
+  ).size > 1;
 
   // ── Slot state ─────────────────────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState<{ idx: number; view: 'details' | 'edit' | 'edit-existing' } | null>(null);
@@ -1289,7 +1294,13 @@ function getAllCompletedABs(batterIdx: number, playerId?: string): AtBat[] {
                       {allBatterABs.length > 0 ? allBatterABs.map(ab => (
                         <div key={ab.id} className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <p className="text-slate-500 text-[18px]">At-Bat #{ab.atBatNumber} · {ab.pitches.length} pitch{ab.pitches.length !== 1 ? 'es' : ''}</p>
+                            <p className="text-slate-500 text-[18px]">
+                              At-Bat #{ab.atBatNumber} · {ab.pitches.length} pitch{ab.pitches.length !== 1 ? 'es' : ''}
+                              {multiplePitchers && (() => {
+                                const names = [...new Set(ab.pitches.map(p => p.pitcherName?.trim()).filter(Boolean))];
+                                return names.length ? <span className="text-slate-600 text-[15px]"> · vs {names.join(' → ')}</span> : null;
+                              })()}
+                            </p>
                             <span className={`text-[18px] font-bold ${getResultColor(ab)}`}>{getResultBadge(ab)}</span>
                           </div>
                           <div className="space-y-1.5">
