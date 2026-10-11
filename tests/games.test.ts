@@ -202,3 +202,32 @@ describe('rebuilding a live game from its pitches', () => {
     expect(s.syncQueue).toHaveLength(1);
   });
 });
+
+describe('test-game cleanup and home/away', () => {
+  it('lists and deletes only games with 4 or fewer pitches, with a backup', async () => {
+    const db = await freshDb();
+    n = 0;
+    await store.writePitches(db, [
+      ...Array.from({ length: 4 }, () => pitch({ gameId: 'tiny' })),
+      ...Array.from({ length: 5 }, () => pitch({ gameId: 'real' })),
+      pitch({ gameId: 'other-org', organizationId: 'org_b', userId: 'u9' }),
+    ]);
+    await games.saveGame(db, A, { gameId: 'tiny', snapshot: snap('tiny'), status: 'active' });
+    const small = await store.listSmallGames(db, 4);
+    expect(small.map(g => [g.gameId, g.pitches])).toEqual([['tiny', 4], ['other-org', 1]]);
+    const r = await store.deleteGames(db, small.map(g => g.gameId));
+    expect(r.pitches).toHaveLength(5);
+    expect(r.savedGames).toBe(1);
+    expect((await store.getGamesList(db, A)).games.map(g => g.gameId)).toEqual(['real']);
+  });
+
+  it('Past Games and the resume list know whether we were home or away', async () => {
+    const db = await freshDb();
+    n = 0;
+    await store.writePitches(db, [pitch({ gameId: 'g1' }), pitch({ gameId: 'g2' })]);
+    await games.saveGame(db, A, { gameId: 'g1', snapshot: snap('g1', { weAreHome: false }), status: 'active' });
+    const list = (await store.getGamesList(db, A)).games;
+    expect(Object.fromEntries(list.map(g => [g.gameId, g.weAreHome]))).toEqual({ g1: false, g2: null });
+    expect((await games.listActiveGames(db, A))[0].weAreHome).toBe(false);
+  });
+});

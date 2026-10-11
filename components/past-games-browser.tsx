@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { GameState } from '@/types';
 import { SheetRow, reconstructGame, buildFakeGameState } from '@/lib/game-reconstruct';
+import { Matchup } from '@/components/matchup';
 
 interface GameSummary {
   gameId: string;
@@ -12,6 +13,7 @@ interface GameSummary {
   pitchCount: number;
   /** 'active' = still open, 'final' = ended, '' = recorded before games were saved. */
   status?: string;
+  weAreHome?: boolean | null;
 }
 
 interface PastGamesBrowserProps {
@@ -160,11 +162,7 @@ export function PastGamesBrowser({ webhookUrl, currentGameId, onSelectGame, onRe
               disabled={loadingGameId !== null}
               className="flex-1 min-w-0 text-left p-4 active:bg-slate-800 transition-colors disabled:opacity-50"
             >
-              <p className="font-semibold text-[19px] text-slate-100 truncate">
-                <span className="text-emerald-300">{g.homeTeam || 'Home'}</span>
-                <span className="text-slate-600 mx-1.5">vs</span>
-                <span className="text-blue-300">{g.visitingTeam || 'Away'}</span>
-              </p>
+              <Matchup myTeam={g.homeTeam} opponent={g.visitingTeam} weAreHome={g.weAreHome} />
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-slate-500 text-[14px]">{formatDate(g.lastTimestamp || g.firstTimestamp)}</span>
                 <span className="text-slate-600 text-[14px]">·</span>

@@ -195,4 +195,6 @@ export interface GameState {
   syncQueue: PitchRecord[];
   lastCompletedAtBatSnapshot?: AtBatSnapshot;
   pitcherHistory: Player[];   // pitchers used earlier in this game
+  /** true = we were the home team, false = away; undefined for older games. */
+  weAreHome?: boolean;
 }

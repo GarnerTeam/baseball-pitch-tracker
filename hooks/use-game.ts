@@ -74,7 +74,7 @@ export function createInitialState(): GameState {
 }
 
 type GameAction =
-  | { type: 'START_GAME'; homeTeam: string; visitingTeam: string }
+  | { type: 'START_GAME'; homeTeam: string; visitingTeam: string; weAreHome?: boolean }
   | { type: 'SET_BASE'; base: keyof BaseState; occupied: boolean }
   | { type: 'SET_OUTS'; count: 0 | 1 | 2 }
   | { type: 'SET_PITCH_TYPE'; pitchType: PitchType }
@@ -189,6 +189,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         phase: 'pitching',
         homeTeam: action.homeTeam,
         visitingTeam: action.visitingTeam,
+        weAreHome: action.weAreHome,
         pitcher: { id: genId(), name: '', number: '' },
         lineup: [],
         currentBatterIndex: 0,
@@ -924,8 +925,8 @@ export function useGame() {
     endGame,
     resumeGame,
     actions: {
-      startGame: useCallback((homeTeam: string, visitingTeam: string) =>
-        dispatch({ type: 'START_GAME', homeTeam, visitingTeam }), []),
+      startGame: useCallback((homeTeam: string, visitingTeam: string, weAreHome?: boolean) =>
+        dispatch({ type: 'START_GAME', homeTeam, visitingTeam, weAreHome }), []),
       setPitchType: useCallback((pitchType: PitchType) =>
         dispatch({ type: 'SET_PITCH_TYPE', pitchType }), []),
       setLocation: useCallback((location: PitchLocation) =>
