@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { GameState, PitchRecord, Player, PITCH_TYPE_COLORS, PITCH_TYPE_LABELS, PitchType } from '@/types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { PitchTypeBarChart, buildPitchTypeStats } from '@/components/pitch-type-chart';
+import { PitcherFaceOffs } from '@/components/pitcher-faceoffs';
 
 const OUTCOME_COLORS: Record<string, string> = {
   ball:'#22c55e','called-strike':'#ef4444','swinging-strike':'#dc2626',
@@ -85,8 +86,9 @@ function BaseballField({ hits }: { hits: PitchRecord[] }) {
 }
 
 // ── Per-pitcher stats page ─────────────────────────────────────────────────────
-function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
+function PitcherStatsPage({ pitches, allGamePitches, pitcher, isCurrent }: {
   pitches: PitchRecord[];
+  allGamePitches: PitchRecord[];
   pitcher: Player | null;
   isCurrent: boolean;
 }) {
@@ -174,6 +176,11 @@ function PitcherStatsPage({ pitches, pitcher, isCurrent }: {
             <div className="text-slate-500 text-[15px] mt-0.5">{x.l}</div>
           </div>
         ))}
+      </div>
+
+      {/* ── Batters faced: every plate appearance vs this pitcher ── */}
+      <div className="px-3 pt-5">
+        <PitcherFaceOffs pitches={pitches} allGamePitches={allGamePitches} />
       </div>
 
       {/* ── Pitch Types ── */}
@@ -382,6 +389,7 @@ export function AnalyticsScreen({ state }: { state: GameState }) {
       <PitcherStatsPage
         key={safeIdx}
         pitches={pitcherPitches}
+        allGamePitches={allPitches}
         pitcher={selectedPitcher}
         isCurrent={isCurrent}
       />
