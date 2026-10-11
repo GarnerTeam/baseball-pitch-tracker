@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
+import { UpdateBanner } from '@/components/update-banner';
 
 export const metadata: Metadata = {
   title: '⚾ On the Bump',
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </head>
         <body className="bg-slate-950 min-h-screen antialiased">
           {children}
+          <UpdateBanner />
         </body>
       </html>
     </ClerkProvider>
