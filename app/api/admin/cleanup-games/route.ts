@@ -8,7 +8,7 @@ import { hasImportToken, isAdmin } from '@/lib/admin';
  * Removes test games: every game with at most `max` pitches (default 4).
  *
  *   GET  ?max=4         → list what would be deleted (changes nothing)
- *   POST ?max=4&confirm=<count> → delete them; `confirm` must equal the
+ *   POST ?max=4&confirm=<count> (or GET with &run=1&confirm=<count>) → delete them; `confirm` must equal the
  *        number of games the preview listed, so a game recorded in between
  *        can't be swept up. Returns the deleted pitches as a backup.
  *
@@ -34,11 +34,16 @@ export async function GET(req: NextRequest) {
   if (!db) return NextResponse.json({ error: 'DATABASE_URL is not configured' }, { status: 503 });
   const max = maxOf(req);
   if (!max) return NextResponse.json({ error: 'max must be 1–10' }, { status: 400 });
+  if (new URL(req.url).searchParams.get('run') === '1') return runDelete(req);
   const games = await store.listSmallGames(db, max);
   return NextResponse.json({ max, count: games.length, pitches: games.reduce((n, g) => n + g.pitches, 0), games });
 }
 
 export async function POST(req: NextRequest) {
+  return runDelete(req);
+}
+
+async function runDelete(req: NextRequest) {
   const denied = await allowed(req);
   if (denied) return denied;
   const db = getDb();
